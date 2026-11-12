@@ -2,9 +2,9 @@ import { shuffle } from '../../engine/rng';
 import { pick, randInt, sample, spread, type Draft, type Family } from './util';
 
 // 3×3 grids as 9-bit masks (bit i = cell i in reading order).
-type Mask = number;
-const tok = (m: Mask) => `{g-${Array.from({ length: 9 }, (_, i) => ((m >> i) & 1 ? '1' : '0')).join('')}}`;
-const cells = (...ids: number[]) => ids.reduce((m, i) => m | (1 << i), 0);
+export type Mask = number;
+export const tok = (m: Mask) => `{g-${Array.from({ length: 9 }, (_, i) => ((m >> i) & 1 ? '1' : '0')).join('')}}`;
+export const cells = (...ids: number[]) => ids.reduce((m, i) => m | (1 << i), 0);
 const map = (m: Mask, f: (r: number, c: number) => [number, number]) => {
   let out = 0;
   for (let i = 0; i < 9; i++) if ((m >> i) & 1) {
@@ -13,14 +13,14 @@ const map = (m: Mask, f: (r: number, c: number) => [number, number]) => {
   }
   return out;
 };
-const rotCW = (m: Mask) => map(m, (r, c) => [c, 2 - r]);
-const rotCCW = (m: Mask) => map(m, (r, c) => [2 - c, r]);
-const mirror = (m: Mask) => map(m, (r, c) => [r, 2 - c]);
-const flipV = (m: Mask) => map(m, (r, c) => [2 - r, c]);
-const invert = (m: Mask) => ~m & 0x1ff;
-const bits = (m: Mask) => Array.from({ length: 9 }, (_, i) => (m >> i) & 1).reduce((a, b) => a + b, 0);
+export const rotCW = (m: Mask) => map(m, (r, c) => [c, 2 - r]);
+export const rotCCW = (m: Mask) => map(m, (r, c) => [2 - c, r]);
+export const mirror = (m: Mask) => map(m, (r, c) => [r, 2 - c]);
+export const flipV = (m: Mask) => map(m, (r, c) => [2 - r, c]);
+export const invert = (m: Mask) => ~m & 0x1ff;
+export const bits = (m: Mask) => Array.from({ length: 9 }, (_, i) => (m >> i) & 1).reduce((a, b) => a + b, 0);
 
-function randomShape(rng: () => number, size: number): Mask {
+export function randomShape(rng: () => number, size: number): Mask {
   // A random asymmetric shape: all 4 rotations and the mirror image distinct.
   for (let t = 0; t < 200; t++) {
     const m = cells(...sample(rng, [0, 1, 2, 3, 4, 5, 6, 7, 8], size));

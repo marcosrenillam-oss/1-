@@ -253,3 +253,12 @@
   .victory-stage { min-height: 190px; }
   .victory-title { font-size: 32px; }
 }
+.victory-time {
+  font-size: 17px;
+  color: var(--gray);
+}
+.victory-time b {
+  color: var(--white);
+  font-size: 22px;
+  margin-left: 6px;
+}

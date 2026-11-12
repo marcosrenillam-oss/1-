@@ -20,7 +20,7 @@ export function ResultScreen({ result, onRetry, onHome }: Props) {
     <div className="screen-inner result">
       <header className="result-head">
         <span className="eyebrow result-eyebrow reveal" style={{ ['--d' as string]: '0ms' }}>
-          {result.abandoned ? 'Partida abandonada' : 'Fin de la partida'}
+          {result.abandoned ? 'Partida abandonada' : result.timeout ? 'Se acabó el tiempo' : 'Fin de la partida'}
         </span>
         <div className="result-score display tnum reveal" style={{ ['--d' as string]: '80ms' }}>
           <span className="result-num">{String(result.score).padStart(2, '0')}</span>
@@ -28,6 +28,7 @@ export function ResultScreen({ result, onRetry, onHome }: Props) {
         </div>
         <p className="result-sub reveal" style={{ ['--d' as string]: '160ms' }}>
           {result.score === 1 ? 'acierto' : 'aciertos'} · Modo {info.label}
+          {result.timed ? ' · Contrarreloj' : ''}
           {!result.abandoned && <> · Caíste en la pregunta {result.reached}</>}
         </p>
         {result.newRecord && (
@@ -37,7 +38,7 @@ export function ResultScreen({ result, onRetry, onHome }: Props) {
         )}
       </header>
 
-      {q && result.chosen !== undefined && (
+      {q && !result.abandoned && (
         <section className="review reveal" style={{ ['--d' as string]: '300ms' }}>
           <span className="eyebrow">Pregunta {result.reached}</span>
           <p className="review-prompt display">
@@ -48,15 +49,25 @@ export function ResultScreen({ result, onRetry, onHome }: Props) {
               <VisualBlock rows={q.visual} />
             </div>
           )}
-          <div className="review-answer review-answer--bad">
-            <IconCross className="review-icon" />
-            <div>
-              <span className="review-label">Tu respuesta</span>
-              <span className="review-value">
-                <RichText text={q.options[result.chosen]} />
-              </span>
+          {result.chosen !== undefined ? (
+            <div className="review-answer review-answer--bad">
+              <IconCross className="review-icon" />
+              <div>
+                <span className="review-label">Tu respuesta</span>
+                <span className="review-value">
+                  <RichText text={q.options[result.chosen]} />
+                </span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="review-answer review-answer--bad">
+              <IconCross className="review-icon" />
+              <div>
+                <span className="review-label">Sin respuesta</span>
+                <span className="review-value">El tiempo se agotó</span>
+              </div>
+            </div>
+          )}
           <div className="review-answer review-answer--good">
             <IconCheck className="review-icon" />
             <div>

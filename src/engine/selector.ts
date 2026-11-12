@@ -35,6 +35,8 @@ function tierOrder(t: Tier): Tier[] {
   return order;
 }
 
+const styleOf = (q: Question) => q.style ?? q.category;
+
 function questionWeight(q: Question, h: SelectionHistory, picked: Question[]): number {
   const seen = h.seen[q.id];
   let w: number;
@@ -46,13 +48,16 @@ function questionWeight(q: Question, h: SelectionHistory, picked: Question[]): n
     if (gamesAgo <= 1) w *= 0.08;
     else if (gamesAgo <= 3) w *= 0.3;
   }
-  // Category balance: penalise categories already present in this run, and
-  // strongly avoid two consecutive questions of the same category.
+  // Variety: a puzzle type (style) should appear at most once per run; a
+  // category is penalised when repeated and avoided back to back.
+  const style = q.style ?? q.category;
+  const sameStyle = picked.reduce((n, p) => n + ((p.style ?? p.category) === style ? 1 : 0), 0);
+  w *= Math.pow(0.002, sameStyle);
   const sameCat = picked.reduce((n, p) => n + (p.category === q.category ? 1 : 0), 0);
-  w *= Math.pow(0.2, sameCat);
+  w *= Math.pow(0.25, sameCat);
   const prev = picked[picked.length - 1];
-  if (prev && prev.category === q.category) w *= 0.15;
-  return Math.max(w, 1e-6);
+  if (prev && prev.category === q.category) w *= 0.05;
+  return Math.max(w, 1e-12);
 }
 
 function buildOnce(pool: Question[], h: SelectionHistory, rng: Rng): Question[] {
@@ -65,6 +70,14 @@ function buildOnce(pool: Question[], h: SelectionHistory, rng: Rng): Question[] 
       if (candidates.length) break;
     }
     if (!candidates.length) break; // bank too small (guarded by tests)
+    // Hard variety rules (relaxed only if a tier runs out of options):
+    // never repeat a puzzle style, never two questions of the same category in a row.
+    const usedStyles = new Set(picked.map(styleOf));
+    const fresh = candidates.filter((q) => !usedStyles.has(styleOf(q)));
+    if (fresh.length) candidates = fresh;
+    const prevCat = picked[picked.length - 1]?.category;
+    const notSameCat = candidates.filter((q) => q.category !== prevCat);
+    if (notSameCat.length) candidates = notSameCat;
     const weights = candidates.map((q) => questionWeight(q, h, picked));
     const choice = weightedPick(candidates, weights, rng);
     picked.push(choice);

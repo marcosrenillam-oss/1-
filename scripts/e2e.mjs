@@ -212,6 +212,46 @@ await settle(900);
 await page.getByRole('button', { name: 'Inicio' }).click();
 await settle(1200);
 
+// ── 5c. Contrarreloj ──────────────────────────────────────────────────────
+await page.getByRole('radio', { name: 'Contrarreloj' }).click();
+await settle(500);
+await shot('12-home-crono');
+check((await save()).lastTimed === true, 'contrarreloj selection persisted');
+const classicBefore = (await save()).stats.dificil.played;
+await page.getByRole('button', { name: 'Empezar contrarreloj' }).click();
+await settle(1200);
+check(await page.locator('.clock').isVisible(), 'contrarreloj: clock visible');
+{
+  const s = await save();
+  check(s.run.timed === true && s.run.timer?.index === 0 && s.run.timer.deadline > Date.now(), 'contrarreloj: clock started for question 1');
+  const t1 = await page.locator('.clock-num').textContent();
+  await settle(1500);
+  const t2 = await page.locator('.clock-num').textContent();
+  check(t1 !== t2, `contrarreloj: clock counts down (${t1} → ${t2})`);
+  await shot('13-crono-question');
+  await answer(true);
+  await settle(400);
+  await nextQuestion();
+  await settle(600);
+  // Leave the app and come back after the deadline: the run is lost.
+  const s2 = await save();
+  check(s2.run.timer?.index === 1, 'contrarreloj: new clock for question 2');
+  s2.run.timer.deadline = Date.now() - 1000;
+  await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, s2]);
+  await page.reload();
+  await settle(800);
+  await shot('14-crono-timeout');
+  check((await page.locator('.feedback--bad .feedback-title').textContent()) === 'Se acabó el tiempo', 'contrarreloj: timeout shown after returning late');
+  await settle(1800);
+  check((await page.locator('.result-eyebrow').textContent()).includes('tiempo'), 'contrarreloj: result explains the timeout');
+  const s3 = await save();
+  check(s3.crono.dificil.played === 1 && s3.crono.dificil.best === 1 && s3.stats.dificil.played === classicBefore, 'contrarreloj: separate records');
+}
+await page.getByRole('button', { name: 'Inicio' }).click();
+await settle(1200);
+await page.getByRole('radio', { name: 'Clásico' }).click();
+await settle(400);
+
 // ── 6. Offline (airplane mode) ────────────────────────────────────────────
 await context.setOffline(true);
 await page.reload();

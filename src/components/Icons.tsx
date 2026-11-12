@@ -29,3 +29,16 @@ export const IconRetry = ({ className }: P) => (
     <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+export const IconClock = ({ className }: P) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" strokeWidth="2.2" />
+    <path d="M12 9v4.5l3 2M9.5 2.8h5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconInfinity = ({ className }: P) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M7.5 8.5c-2 0-3.5 1.6-3.5 3.5s1.5 3.5 3.5 3.5c3.5 0 5.5-7 9-7 2 0 3.5 1.6 3.5 3.5s-1.5 3.5-3.5 3.5c-3.5 0-5.5-7-9-7z" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+  </svg>
+);

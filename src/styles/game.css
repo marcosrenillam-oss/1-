@@ -527,3 +527,62 @@
   width: 38px;
   height: 38px;
 }
+
+/* Contrarreloj */
+.game-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.game-mode--timed {
+  color: var(--lime);
+  box-shadow: inset 0 0 0 1px rgba(200, 255, 46, 0.4);
+}
+.game-mode-icon {
+  width: 14px;
+  height: 14px;
+}
+.clock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--lime);
+  transition: color 0.3s;
+}
+.clock-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.clock-num {
+  font-size: 17px;
+  font-weight: 700;
+  min-width: 40px;
+}
+.clock-bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--anthracite-2);
+  overflow: hidden;
+}
+.clock-fill {
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  transform-origin: left;
+  transition: transform 0.1s linear, background-color 0.3s;
+}
+.clock--low {
+  color: var(--red);
+}
+.clock--urgent .clock-num,
+.clock--urgent .clock-icon {
+  animation: clockPulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes clockPulse {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0.55; transform: scale(1.08); }
+}

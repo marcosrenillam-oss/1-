@@ -1,8 +1,12 @@
 import type { Question } from '../types';
 import { LOGIC_FAMILIES } from './logic';
+import { MORE_FAMILIES } from './more';
+import { NUMBER_FAMILIES } from './numbers';
 import { VISUAL_FAMILIES } from './visual';
 import { WORD_FAMILIES } from './words';
 import { buildGenerated } from './util';
+
+export const ALL_FAMILIES = [...LOGIC_FAMILIES, ...VISUAL_FAMILIES, ...WORD_FAMILIES, ...NUMBER_FAMILIES, ...MORE_FAMILIES];
 
 /**
  * Template-based questions, each verified by a solver (unique answer).
@@ -10,5 +14,5 @@ import { buildGenerated } from './util';
  * app ships them as static data: nothing is generated at runtime.
  */
 export function generateAll(): Question[] {
-  return buildGenerated([...LOGIC_FAMILIES, ...VISUAL_FAMILIES, ...WORD_FAMILIES]);
+  return buildGenerated(ALL_FAMILIES);
 }

@@ -2,6 +2,8 @@ export type Mode = 'facil' | 'normal' | 'dificil' | 'experto';
 
 export type Category =
   | 'deductiva'
+  | 'secuencias'
+  | 'matematicas'
   | 'adivinanzas'
   | 'patrones'
   | 'visual'
@@ -31,10 +33,17 @@ export interface Question {
   options: string[];
   answer: number;
   explanation: string;
+  /**
+   * Puzzle type (e.g. a generator family). A run avoids repeating a style.
+   * Defaults to the category for hand-written questions.
+   */
+  style?: string;
 }
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   deductiva: 'Lógica deductiva',
+  secuencias: 'Secuencias numéricas',
+  matematicas: 'Cálculo cotidiano',
   adivinanzas: 'Adivinanzas',
   patrones: 'Patrones y series',
   visual: 'Patrones visuales',

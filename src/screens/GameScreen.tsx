@@ -6,7 +6,7 @@ import { MODE_INFO, RUN_LENGTH, TIER_LABEL } from '../engine/difficulty';
 import type { AnswerOutcome, RunResult } from '../engine/game';
 import type { ActiveRun } from '../storage/persistence';
 import { glyphCount, hasGlyph, RichText } from '../components/Glyph';
-import { IconArrow, IconCheck, IconClose, IconCross } from '../components/Icons';
+import { IconArrow, IconCheck, IconClock, IconClose, IconCross } from '../components/Icons';
 import { ProgressBar } from '../components/ProgressBar';
 import { VisualBlock } from '../components/VisualBlock';
 import { motionMs } from '../motion';
@@ -16,6 +16,22 @@ interface Props {
   onSubmit: (displayPos: number) => AnswerOutcome;
   onFinish: (result: RunResult) => void;
   onAbandon: () => void;
+  /** Contrarreloj: start the clock of the question on screen. */
+  onStartTimer: () => void;
+  /** Contrarreloj: the clock ran out. */
+  onTimeout: () => RunResult | null;
+}
+
+/** Remaining ms until `deadline`, refreshed ~10 times per second while active. */
+function useRemaining(deadline: number | undefined, active: boolean): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active || deadline === undefined) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(id);
+  }, [active, deadline]);
+  return deadline === undefined ? null : Math.max(0, deadline - now);
 }
 
 interface Shown {
@@ -46,13 +62,14 @@ function optionKind(text: string): string {
   return glyphCount(text) > 3 ? 'opt--glyphs-many' : 'opt--glyphs';
 }
 
-export function GameScreen({ run, onSubmit, onFinish, onAbandon }: Props) {
+export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, onTimeout }: Props) {
   const [shown, setShown] = useState<Shown>(() => fromRun(run));
   const [selected, setSelected] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>('answering');
   const [victory, setVictory] = useState<RunResult | null>(null);
   const [confirmExit, setConfirmExit] = useState(false);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
   const latestRun = useRef(run);
   latestRun.current = run;
   const timers = useRef<number[]>([]);
@@ -77,6 +94,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon }: Props) {
     locked.current = true;
     const out = onSubmit(selected);
     if (out.kind === 'wrong') {
+      if (out.result.timeout) setTimedOut(true);
       setPhase('wrong');
       setFlash('bad');
       later(() => onFinish(out.result), motionMs(1500, 900));
@@ -110,6 +128,26 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon }: Props) {
     }, motionMs(260, 0));
   }, [phase, victory, onFinish]);
 
+  // ── Contrarreloj ────────────────────────────────────────────────────
+  const timed = !!run.timed;
+  const timer = run.timer && run.timer.index === index ? run.timer : undefined;
+  const remaining = useRemaining(timer?.deadline, timed && phase === 'answering');
+  useEffect(() => {
+    if (timed && phase === 'answering') onStartTimer();
+  }, [timed, phase, index, onStartTimer]);
+  useEffect(() => {
+    if (!timed || phase !== 'answering' || remaining === null || remaining > 0 || locked.current) return;
+    locked.current = true;
+    const result = onTimeout();
+    if (!result) return;
+    setTimedOut(true);
+    setPhase('wrong');
+    setFlash('bad');
+    later(() => onFinish(result), motionMs(1700, 1000));
+  }, [timed, phase, remaining, onTimeout, onFinish]);
+  const limitMs = timer ? timer.deadline - timer.startedAt : 1;
+  const secs = remaining === null ? null : Math.ceil(remaining / 1000);
+
   const correctPos = order.indexOf(q.answer);
   const info = MODE_INFO[run.mode];
   const tier = TIER_LABEL[q.tier];
@@ -122,7 +160,10 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon }: Props) {
         <button type="button" className="icon-btn" aria-label="Abandonar partida" onClick={() => setConfirmExit(true)} disabled={phase !== 'answering'}>
           <IconClose />
         </button>
-        <span className="game-mode">{info.label}</span>
+        <span className={`game-mode${timed ? ' game-mode--timed' : ''}`}>
+          {timed && <IconClock className="game-mode-icon" />}
+          {info.label}
+        </span>
       </header>
 
       <div className="game-counter">
@@ -138,6 +179,20 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon }: Props) {
       </div>
 
       <ProgressBar done={done} current={index} failed={phase === 'wrong'} />
+
+      {timed && (
+        <div
+          className={`clock${secs !== null && remaining! <= limitMs * 0.25 ? ' clock--low' : ''}${secs !== null && secs <= 5 && phase === 'answering' ? ' clock--urgent' : ''}`}
+          role="timer"
+          aria-label={secs === null ? 'Tiempo' : `Quedan ${secs} segundos`}
+        >
+          <IconClock className="clock-icon" />
+          <span className="clock-num display tnum">{secs === null ? '—' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`}</span>
+          <span className="clock-bar">
+            <span className="clock-fill" style={{ transform: `scaleX(${remaining === null ? 1 : remaining / limitMs})` }} />
+          </span>
+        </div>
+      )}
 
       <main className={`qwrap${phase === 'leaving' ? ' q-exit' : ' q-enter'}`} key={q.id}>
         <span className="q-cat">{CATEGORY_LABEL[q.category]}</span>
@@ -220,7 +275,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon }: Props) {
               <span className="feedback-badge">
                 <IconCross />
               </span>
-              <span className="feedback-title display">Incorrecto</span>
+              <span className="feedback-title display">{timedOut ? 'Se acabó el tiempo' : 'Incorrecto'}</span>
             </div>
           </div>
         )}

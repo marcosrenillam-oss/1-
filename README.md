@@ -4,8 +4,12 @@ Juego de razonamiento lógico para iPhone, instalable en la pantalla de inicio (
 20 preguntas seguidas, cada vez más difíciles. Un solo fallo y vuelves a empezar.
 
 - 4 modos independientes (Fácil, Normal, Difícil, Experto), cada uno con sus propias preguntas, récord y estadísticas.
-- Más de 1100 preguntas sin cálculos (unas 240-280 por modo): lógica deductiva, adivinanzas, pensamiento lateral,
-  juegos de palabras, patrones visuales, observación, relaciones, lógica verbal y enigmas clásicos. Todas con explicación.
+- Más de 2000 preguntas (unas 470-530 por modo) de más de 60 tipos distintos: lógica deductiva, adivinanzas,
+  pensamiento lateral, juegos de palabras, patrones visuales, giros y espejos, observación, cálculo cotidiano
+  (porcentajes, horas, cambio… nunca álgebra), series, relaciones y enigmas clásicos. Todas con explicación.
+- Dos tipos de partida: **Clásico** (sin tiempo) y **Contrarreloj** (cada pregunta tiene un límite de tiempo
+  ajustado a lo larga y difícil que es; si se agota, pierdes). Cada uno con sus propios récords; en
+  contrarreloj también se guarda el mejor tiempo total.
 - 100 % local y offline: sin backend, sin APIs, sin anuncios, sin coste.
 
 ## Probarlo en local
@@ -90,9 +94,10 @@ q('n61', 3, 'deductiva', 'Enunciado…', ['Correcta', 'Distractor 1', 'Distracto
 ## Preguntas generadas
 
 `npm run gen` regenera `src/data/questions/generated.json` a partir de las plantillas de `src/data/gen/`
-(carreras y colas, quién tiene qué, caballeros y bribones, cajas con etiquetas, sospechosos, silogismos,
+(más de 50 tipos: carreras y colas, quién tiene qué, caballeros y bribones, cajas con etiquetas, sospechosos, silogismos,
 condicionales, secuencias de cuadrículas, matrices, figuras y flechas, figura distinta, intrusos, analogías,
-anagramas, palíndromos, códigos y series de letras). Cada pregunta se comprueba con un solucionador por fuerza
+anagramas, palíndromos, códigos, series de letras y números, porcentajes, horas, balanzas, minisudokus,
+orientación, recorridos, espejos, giros, simetrías, analogías visuales, sopas de letras, sinónimos…). Cada pregunta se comprueba con un solucionador por fuerza
 bruta: solo se guarda si tiene una única respuesta. Se generan una vez y la app las incluye como datos fijos.
 
 ## Selección de preguntas
@@ -101,7 +106,8 @@ Cada partida se genera localmente:
 
 - 20 preguntas sin repetición, respetando el tramo de dificultad de cada posición.
 - Prioridad alta a preguntas no vistas; las vistas en las últimas partidas pierden peso.
-- Equilibrio de categorías (penalización exponencial) y sin dos categorías seguidas siempre que se pueda.
+- Nunca repite un mismo tipo de pregunta en una partida ni pone dos de la misma categoría seguidas.
+- Equilibrio de categorías a lo largo de la partida.
 - Rechazo de partidas casi idénticas a las 8 más recientes (nunca la misma secuencia).
 - Orden de respuestas barajado en cada pregunta.
 

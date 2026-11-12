@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BANK, getQuestion } from '../data/questions';
 import { MODES, RUN_LENGTH, SLOT_TIERS } from './difficulty';
-import { abandonRun, startRun, submitAnswer, sanitizeRun } from './game';
+import { abandonRun, startRun, startTimer, submitAnswer, sanitizeRun, timeLimitFor, timeoutRun } from './game';
 import { seededRng } from './rng';
 import { emptySave, normalize, type SaveData } from '../storage/persistence';
 
@@ -85,6 +85,81 @@ describe('run generation', () => {
       save = abandonRun(save)!.save;
     }
     expect(backToBack / 50).toBeLessThan(1); // rare, on average < 1 per run
+  });
+});
+
+describe('variety', () => {
+  it('never repeats a puzzle style inside a run (and rarely repeats a category back to back)', () => {
+    for (const mode of MODES) {
+      const rng = seededRng(77);
+      let save = emptySave();
+      let repeats = 0;
+      for (let g = 0; g < 40; g++) {
+        save = startRun(save, mode, rng);
+        const qs = save.run!.ids.map((id) => getQuestion(id)!);
+        const styles = qs.map((q) => q.style ?? q.category);
+        repeats += styles.length - new Set(styles).size;
+        save = abandonRun(save)!.save;
+      }
+      expect(repeats, mode).toBe(0);
+    }
+  });
+});
+
+describe('contrarreloj', () => {
+  it('time limits are sensible', () => {
+    for (const m of MODES) for (const q of BANK[m]) {
+      const t = timeLimitFor(q);
+      expect(t).toBeGreaterThanOrEqual(20);
+      expect(t).toBeLessThanOrEqual(120);
+    }
+  });
+
+  it('answering in time continues and accumulates time; winning records the best time', () => {
+    let save = startRun(emptySave(), 'facil', seededRng(30), true);
+    let now = 1_000_000;
+    for (let i = 0; i < RUN_LENGTH; i++) {
+      save = startTimer(save, now);
+      expect(save.run!.timer!.index).toBe(i);
+      expect(startTimer(save, now + 5)).toBe(save); // idempotent
+      now += 3000;
+      const out = submitAnswer(save, correctPos(save), now);
+      save = out.save;
+      if (i < RUN_LENGTH - 1) expect(out.kind).toBe('correct');
+      else {
+        expect(out.kind).toBe('victory');
+        if (out.kind === 'victory') {
+          expect(out.result.timed).toBe(true);
+          expect(out.result.totalMs).toBe(60_000);
+          expect(out.result.newBestTime).toBe(true);
+        }
+      }
+    }
+    expect(save.crono.facil).toMatchObject({ played: 1, completed: 1, best: 20, bestTimeMs: 60_000 });
+    expect(save.stats.facil.played).toBe(0); // classic records untouched
+  });
+
+  it('running out of time ends the run', () => {
+    let save = startRun(emptySave(), 'experto', seededRng(31), true);
+    save = startTimer(save, 0);
+    save = submitAnswer(save, correctPos(save), 1000).save;
+    save = startTimer(save, 2000);
+    const deadline = save.run!.timer!.deadline;
+    expect(timeoutRun(save, deadline - 1)).toBeNull();
+    const out = timeoutRun(save, deadline + 1)!;
+    expect(out.result.timeout).toBe(true);
+    expect(out.result.score).toBe(1);
+    expect(out.save.run).toBeNull();
+    expect(out.save.crono.experto).toMatchObject({ played: 1, best: 1 });
+  });
+
+  it('answering after the deadline counts as a timeout', () => {
+    let save = startRun(emptySave(), 'normal', seededRng(32), true);
+    save = startTimer(save, 0);
+    const late = save.run!.timer!.deadline + 10;
+    const out = submitAnswer(save, correctPos(save), late);
+    expect(out.kind).toBe('wrong');
+    if (out.kind === 'wrong') expect(out.result.timeout).toBe(true);
   });
 });
 

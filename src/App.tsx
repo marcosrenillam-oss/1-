@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Mode } from './data/types';
-import { abandonRun, sanitizeRun, startRun, submitAnswer, type RunResult } from './engine/game';
+import { abandonRun, sanitizeRun, startRun, startTimer, submitAnswer, timeoutRun, type RunResult } from './engine/game';
 import { defaultRng } from './engine/rng';
 import { loadSave, requestPersistence, writeSave, type ActiveRun, type SaveData } from './storage/persistence';
 import { GameScreen } from './screens/GameScreen';
@@ -21,6 +21,7 @@ const rng = defaultRng();
 export default function App() {
   const [save, setSave] = useState<SaveData>(() => sanitizeRun(loadSave()));
   const [mode, setMode] = useState<Mode>(() => save.run?.mode ?? save.lastMode);
+  const [timed, setTimed] = useState<boolean>(() => (save.run ? !!save.run.timed : save.lastTimed));
   // An unfinished run (app closed mid-game) resumes where it was left.
   const [screen, setScreen] = useState<Screen>(() => (save.run ? { name: 'game' } : { name: 'home' }));
   const [screenKey, setScreenKey] = useState(0);
@@ -63,13 +64,22 @@ export default function App() {
     [commit],
   );
 
+  const changeTimed = useCallback(
+    (t: boolean) => {
+      setTimed(t);
+      commit({ ...saveRef.current, lastTimed: t });
+    },
+    [commit],
+  );
+
   const start = useCallback(
-    (m: Mode) => {
+    (m: Mode, t: boolean) => {
       if (navigating.current) return;
-      const next = startRun(saveRef.current, m, rng);
+      const next = startRun(saveRef.current, m, rng, t);
       commit(next);
       runRef.current = next.run;
       setMode(m);
+      setTimed(t);
       go({ name: 'game' });
     },
     [commit, go],
@@ -84,6 +94,18 @@ export default function App() {
     [commit],
   );
 
+  const beginTimer = useCallback(() => {
+    const next = startTimer(saveRef.current, Date.now());
+    if (next !== saveRef.current) commit(next);
+  }, [commit]);
+
+  const timeout = useCallback(() => {
+    const out = timeoutRun(saveRef.current, Date.now());
+    if (!out) return null;
+    commit(out.save);
+    return out.result;
+  }, [commit]);
+
   const finish = useCallback((result: RunResult) => go(result.won ? { name: 'victory', result } : { name: 'result', result }), [go]);
 
   const abandon = useCallback(() => {
@@ -96,17 +118,17 @@ export default function App() {
 
   let content: ReactNode = null;
   if (screen.name === 'home') {
-    content = <HomeScreen save={save} mode={mode} onMode={changeMode} onStart={() => start(mode)} />;
+    content = <HomeScreen save={save} mode={mode} timed={timed} onMode={changeMode} onTimed={changeTimed} onStart={() => start(mode, timed)} />;
   } else if (screen.name === 'game' && runRef.current) {
     content = (
-      <GameScreen key={runRef.current.gameNo + runRef.current.mode} run={runRef.current} onSubmit={submit} onFinish={finish} onAbandon={abandon} />
+      <GameScreen key={runRef.current.gameNo + runRef.current.mode} run={runRef.current} onSubmit={submit} onFinish={finish} onAbandon={abandon} onStartTimer={beginTimer} onTimeout={timeout} />
     );
   } else if (screen.name === 'result') {
-    content = <ResultScreen result={screen.result} onRetry={() => start(screen.result.mode)} onHome={() => go({ name: 'home' })} />;
+    content = <ResultScreen result={screen.result} onRetry={() => start(screen.result.mode, screen.result.timed)} onHome={() => go({ name: 'home' })} />;
   } else if (screen.name === 'victory') {
-    content = <VictoryScreen result={screen.result} onRetry={() => start(screen.result.mode)} onHome={() => go({ name: 'home' })} />;
+    content = <VictoryScreen result={screen.result} onRetry={() => start(screen.result.mode, screen.result.timed)} onHome={() => go({ name: 'home' })} />;
   } else {
-    content = <HomeScreen save={save} mode={mode} onMode={changeMode} onStart={() => start(mode)} />;
+    content = <HomeScreen save={save} mode={mode} timed={timed} onMode={changeMode} onTimed={changeTimed} onStart={() => start(mode, timed)} />;
   }
 
   return (

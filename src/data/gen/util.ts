@@ -103,6 +103,7 @@ export function buildGenerated(families: Family[]): Question[] {
             options: opts,
             answer: 0,
             explanation: d.expl,
+            style: fam.id,
             ...(d.visual ? { visual: d.visual } : {}),
           });
         }

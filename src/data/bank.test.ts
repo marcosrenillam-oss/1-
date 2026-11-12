@@ -26,8 +26,8 @@ describe('question bank', () => {
     expect(TOTAL_QUESTIONS).toBeGreaterThanOrEqual(1000);
   });
 
-  it('contains no maths categories', () => {
-    for (const m of MODES) for (const q of BANK[m]) expect(['matematicas', 'secuencias']).not.toContain(q.category);
+  it('contains no algebra (no unknowns like «x + 5 = 12»)', () => {
+    for (const m of MODES) for (const q of BANK[m]) expect(q.prompt, q.id).not.toMatch(/\b[xy]\s*[+\-=²]|\bx²|ecuación/);
   });
 
   it('generated.json is up to date with the generators', () => {
@@ -72,9 +72,13 @@ describe('question bank', () => {
         }
       });
 
-      it('covers all ten categories', () => {
+      it('covers every category', () => {
         const cats = new Set<Category>(list.map((q) => q.category));
-        expect(cats.size).toBe(10);
+        expect(cats.size).toBe(Object.keys(CATEGORY_LABEL).length);
+      });
+
+      it('offers many different puzzle styles', () => {
+        expect(new Set(list.map((q) => q.style ?? q.category)).size).toBeGreaterThanOrEqual(50);
       });
     });
   }

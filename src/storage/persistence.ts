@@ -10,6 +10,21 @@ export interface ActiveRun {
   /** Index of the current (unanswered) question. */
   index: number;
   gameNo: number;
+  /** Contrarreloj: every question has a time limit. */
+  timed?: boolean;
+  /** Clock of the current question (contrarreloj). Absolute times survive app restarts. */
+  timer?: { index: number; startedAt: number; deadline: number };
+  /** Contrarreloj: time spent on answered questions. */
+  usedMs?: number;
+}
+
+export interface CronoStats {
+  played: number;
+  completed: number;
+  best: number;
+  bestReached: number;
+  /** Fastest 20/20 run in ms. */
+  bestTimeMs: number | null;
 }
 
 export interface ModeStats {
@@ -28,6 +43,9 @@ export interface SaveData {
   version: 1;
   lastMode: Mode;
   stats: Record<Mode, ModeStats>;
+  crono: Record<Mode, CronoStats>;
+  /** Last game type used on the home screen. */
+  lastTimed: boolean;
   run: ActiveRun | null;
 }
 
@@ -37,11 +55,17 @@ export function emptyStats(): ModeStats {
   return { played: 0, completed: 0, best: 0, bestReached: 0, gamesStarted: 0, seen: {}, recentRuns: [] };
 }
 
+export function emptyCrono(): CronoStats {
+  return { played: 0, completed: 0, best: 0, bestReached: 0, bestTimeMs: null };
+}
+
 export function emptySave(): SaveData {
   return {
     version: 1,
     lastMode: 'facil',
     stats: { facil: emptyStats(), normal: emptyStats(), dificil: emptyStats(), experto: emptyStats() },
+    crono: { facil: emptyCrono(), normal: emptyCrono(), dificil: emptyCrono(), experto: emptyCrono() },
+    lastTimed: false,
     run: null,
   };
 }
@@ -72,6 +96,21 @@ export function normalize(raw: unknown): SaveData {
       };
     }
   }
+  if (r.crono && typeof r.crono === 'object') {
+    for (const m of MODES) {
+      const c = (r.crono as Record<string, Partial<CronoStats>>)[m];
+      if (!c || typeof c !== 'object') continue;
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+      base.crono[m] = {
+        played: num(c.played),
+        completed: num(c.completed),
+        best: Math.min(20, num(c.best)),
+        bestReached: Math.min(20, num(c.bestReached)),
+        bestTimeMs: typeof c.bestTimeMs === 'number' && c.bestTimeMs > 0 ? c.bestTimeMs : null,
+      };
+    }
+  }
+  base.lastTimed = r.lastTimed === true;
   const run = r.run;
   if (
     run && isMode(run.mode) && Array.isArray(run.ids) && Array.isArray(run.orders) &&

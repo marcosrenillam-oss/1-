@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MODE_INFO, RUN_LENGTH } from '../engine/difficulty';
-import { winRate, type RunResult } from '../engine/game';
+import { formatMs, winRate, type RunResult } from '../engine/game';
 import { Celebration } from '../components/Celebration';
 import { IconArrow } from '../components/Icons';
 import { prefersReducedMotion } from '../motion';
@@ -47,7 +47,7 @@ export function VictoryScreen({ result, onRetry, onHome }: Props) {
 
       <div className="victory-copy">
         <span className="eyebrow victory-eyebrow reveal" style={{ ['--d' as string]: '900ms' }}>
-          Modo {info.label} completado
+          Modo {info.label}{result.timed ? ' · Contrarreloj' : ''} completado
         </span>
         <h1 className="victory-title display reveal" style={{ ['--d' as string]: '1000ms' }}>
           Desafío superado
@@ -57,9 +57,14 @@ export function VictoryScreen({ result, onRetry, onHome }: Props) {
             ? 'Tu primera victoria en este modo. Ahora formas parte del 1 %.'
             : `Victoria número ${s.completed} en este modo. Sigues en el 1 %.`}
         </p>
-        {result.newRecord && (
+        {result.timed && result.totalMs !== undefined && (
+          <p className="victory-time reveal display tnum" style={{ ['--d' as string]: '1140ms' }}>
+            Tiempo total <b>{formatMs(result.totalMs)}</b>
+          </p>
+        )}
+        {(result.newRecord || result.newBestTime) && (
           <span className="badge badge--lime reveal" style={{ ['--d' as string]: '1180ms' }}>
-            Nuevo récord · 20/20
+            {result.newRecord ? 'Nuevo récord · 20/20' : 'Nuevo mejor tiempo'}
           </span>
         )}
       </div>
