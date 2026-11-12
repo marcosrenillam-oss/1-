@@ -1,0 +1,175 @@
+/* ── Keyframes ────────────────────────────────────────────────────────── */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes swapIn {
+  from { opacity: 0; transform: translateY(8px); filter: blur(3px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes screenIn {
+  from { opacity: 0; transform: scale(0.985) translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes screenOut {
+  to { opacity: 0; transform: scale(0.99) translateY(-6px); filter: blur(4px); }
+}
+
+/* Logo */
+@keyframes oneIn {
+  0% { opacity: 0; transform: translateY(55%) skewY(6deg); clip-path: inset(0 0 100% 0); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; clip-path: inset(-10% -10% -10% -10%); }
+}
+@keyframes pctIn {
+  0% { opacity: 0; transform: translateX(-30%) rotate(-25deg) scale(0.6); }
+  70% { opacity: 1; transform: translateX(3%) rotate(4deg) scale(1.04); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes scan {
+  0% { transform: translateX(-120%); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateX(220%); opacity: 0; }
+}
+@keyframes glowBreath {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.08); }
+}
+@keyframes pctPulse {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 28px var(--lime-glow); }
+}
+
+/* Buttons */
+@keyframes shimmer {
+  0%, 62% { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(260%) skewX(-18deg); }
+}
+
+/* Question flow */
+@keyframes qIn {
+  from { opacity: 0; transform: translateX(26px); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes qOut {
+  to { opacity: 0; transform: translateX(-30px); filter: blur(6px); }
+}
+@keyframes optIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes digitIn {
+  from { opacity: 0; transform: translateY(45%); filter: blur(3px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes segPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+@keyframes selectPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(0.975); }
+  100% { transform: scale(1); }
+}
+@keyframes correctPop {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 var(--lime-glow); }
+  35% { transform: scale(1.025); }
+  100% { transform: scale(1); box-shadow: 0 0 0 14px rgba(200, 255, 46, 0); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-9px); }
+  30% { transform: translateX(8px); }
+  45% { transform: translateX(-6px); }
+  60% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+}
+@keyframes impact {
+  0% { transform: none; }
+  20% { transform: translate(-3px, 2px) scale(0.995); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, 1px); }
+  100% { transform: none; }
+}
+@keyframes flashGood {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes flashBad {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+@keyframes sheetUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes badgePop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* Victory */
+@keyframes ring {
+  0% { transform: translate(-50%, -50%) scale(0.15); opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+}
+@keyframes shard {
+  0% { transform: rotate(var(--a)) translateY(0) scaleY(0.2); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: rotate(var(--a)) translateY(calc(-1 * var(--dist))) scaleY(1); opacity: 0; }
+}
+@keyframes scoreIn {
+  0% { opacity: 0; transform: scale(1.6); filter: blur(10px); }
+  60% { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes victoryGlow {
+  0%, 100% { text-shadow: 0 0 24px rgba(200, 255, 46, 0.35), 0 0 70px rgba(200, 255, 46, 0.15); }
+  50% { text-shadow: 0 0 36px rgba(200, 255, 46, 0.6), 0 0 110px rgba(200, 255, 46, 0.25); }
+}
+
+/* ── Reusable animation classes ──────────────────────────────────────── */
+.reveal {
+  animation: riseIn 0.6s var(--ease-out) both;
+  animation-delay: var(--d, 0ms);
+}
+.swap {
+  animation: swapIn 0.4s var(--ease-out) both;
+}
+.screen-enter {
+  animation: screenIn 0.42s var(--ease-out) both;
+}
+.screen-exit {
+  animation: screenOut 0.22s ease-in forwards;
+  pointer-events: none;
+}
+
+/* ── Reduced motion: keep state changes, drop movement ───────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .celebration,
+  .logo-scan,
+  .flash {
+    display: none !important;
+  }
+}
