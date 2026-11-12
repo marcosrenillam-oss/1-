@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "icons": "node scripts/generate-icons.mjs",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "gen": "vite-node scripts/gen-bank.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

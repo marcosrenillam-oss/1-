@@ -3,16 +3,24 @@ import { FACIL } from './facil';
 import { NORMAL } from './normal';
 import { DIFICIL } from './dificil';
 import { EXPERTO } from './experto';
+import { ENIGMAS } from './enigmas';
+import GENERATED from './generated.json';
 
 /**
- * The full local question bank. To extend it, append questions to the
- * per-mode files (any tier, any category): the selector adapts automatically.
+ * The full local question bank:
+ *  - facil/normal/dificil/experto.ts: original hand-written questions
+ *  - enigmas.ts: riddles, lateral thinking, kinship and classic puzzles
+ *  - generated.json: solver-verified template questions (`npm run gen`)
+ * To extend it, append questions (any tier, any category): the selector adapts.
  */
+const EXTRA: Question[] = [...ENIGMAS, ...(GENERATED as Question[])];
+const extraFor = (m: Mode) => EXTRA.filter((q) => q.mode === m);
+
 export const BANK: Record<Mode, Question[]> = {
-  facil: FACIL,
-  normal: NORMAL,
-  dificil: DIFICIL,
-  experto: EXPERTO,
+  facil: [...FACIL, ...extraFor('facil')],
+  normal: [...NORMAL, ...extraFor('normal')],
+  dificil: [...DIFICIL, ...extraFor('dificil')],
+  experto: [...EXPERTO, ...extraFor('experto')],
 };
 
 const BY_ID = new Map<string, Question>();

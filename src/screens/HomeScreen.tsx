@@ -17,7 +17,7 @@ interface Props {
 export function HomeScreen({ save, mode, onMode, onStart }: Props) {
   const s = save.stats[mode];
   const total = BANK[mode].length;
-  const seen = Object.keys(s.seen).length;
+  const seen = BANK[mode].reduce((n, q) => n + (s.seen[q.id] ? 1 : 0), 0);
   const seenPct = Math.round((seen / total) * 100);
   const info = MODE_INFO[mode];
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BANK, TOTAL_QUESTIONS } from './questions';
 import { CATEGORY_LABEL, type Category, type Tier } from './types';
 import { MODES, SLOT_TIERS } from '../engine/difficulty';
+import { generateAll } from './gen';
+import GENERATED from './questions/generated.json';
 
 const TOKEN = /\{([a-z0-9-]+)\}/g;
 const SHAPES = new Set([
@@ -20,8 +22,16 @@ function tokensValid(text: string) {
 }
 
 describe('question bank', () => {
-  it('has at least 200 questions', () => {
-    expect(TOTAL_QUESTIONS).toBeGreaterThanOrEqual(200);
+  it('has at least 1000 questions', () => {
+    expect(TOTAL_QUESTIONS).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('contains no maths categories', () => {
+    for (const m of MODES) for (const q of BANK[m]) expect(['matematicas', 'secuencias']).not.toContain(q.category);
+  });
+
+  it('generated.json is up to date with the generators', () => {
+    expect(generateAll()).toEqual(GENERATED);
   });
 
   it('has unique ids across all modes', () => {
@@ -48,8 +58,8 @@ describe('question bank', () => {
         }
       });
 
-      it('has no duplicated prompts+visuals', () => {
-        const keys = list.map((q) => q.prompt + '|' + (q.visual ?? []).join('/'));
+      it('has no duplicated questions', () => {
+        const keys = list.map((q) => q.prompt + '|' + (q.visual ?? []).join('/') + '|' + [...q.options].sort().join('/'));
         expect(new Set(keys).size).toBe(keys.length);
       });
 

@@ -4,7 +4,8 @@ Juego de razonamiento lógico para iPhone, instalable en la pantalla de inicio (
 20 preguntas seguidas, cada vez más difíciles. Un solo fallo y vuelves a empezar.
 
 - 4 modos independientes (Fácil, Normal, Difícil, Experto), cada uno con sus propias preguntas, récord y estadísticas.
-- 240 preguntas originales (60 por modo) en 10 categorías de lógica, cada una con su explicación.
+- Más de 1100 preguntas sin cálculos (unas 240-280 por modo): lógica deductiva, adivinanzas, pensamiento lateral,
+  juegos de palabras, patrones visuales, observación, relaciones, lógica verbal y enigmas clásicos. Todas con explicación.
 - 100 % local y offline: sin backend, sin APIs, sin anuncios, sin coste.
 
 ## Probarlo en local
@@ -54,7 +55,8 @@ conexión, fondo a pantalla completa, zonas seguras y ausencia de errores de con
 src/
   data/
     types.ts              Tipos y helper de autoría de preguntas
-    questions/            Banco de preguntas: facil.ts, normal.ts, dificil.ts, experto.ts
+    questions/            Banco: facil.ts … experto.ts, enigmas.ts (escritas a mano) y generated.json
+    gen/                  Generadores con solucionador: cada pregunta generada tiene una única respuesta
   engine/
     difficulty.ts         Modos, progresión de 20 huecos por nivel (tiers)
     selector.ts           Selección aleatoria controlada de cada partida
@@ -84,6 +86,14 @@ q('n61', 3, 'deductiva', 'Enunciado…', ['Correcta', 'Distractor 1', 'Distracto
 - Preguntas visuales: añade un array de filas. `{ci}`, `{sqo}`, `{tr}`, `{ar-r}`, `{hc-t}`,
   `{g-101010101}` (cuadrícula 3×3), etc. dibujan figuras vectoriales; `?` marca el hueco.
 - `npm test` valida ids únicos, 4 opciones distintas, figuras válidas y cantidad suficiente por tramo.
+
+## Preguntas generadas
+
+`npm run gen` regenera `src/data/questions/generated.json` a partir de las plantillas de `src/data/gen/`
+(carreras y colas, quién tiene qué, caballeros y bribones, cajas con etiquetas, sospechosos, silogismos,
+condicionales, secuencias de cuadrículas, matrices, figuras y flechas, figura distinta, intrusos, analogías,
+anagramas, palíndromos, códigos y series de letras). Cada pregunta se comprueba con un solucionador por fuerza
+bruta: solo se guarda si tiene una única respuesta. Se generan una vez y la app las incluye como datos fijos.
 
 ## Selección de preguntas
 

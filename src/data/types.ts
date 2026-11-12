@@ -2,10 +2,10 @@ export type Mode = 'facil' | 'normal' | 'dificil' | 'experto';
 
 export type Category =
   | 'deductiva'
-  | 'secuencias'
+  | 'adivinanzas'
   | 'patrones'
   | 'visual'
-  | 'matematicas'
+  | 'palabras'
   | 'lateral'
   | 'observacion'
   | 'relaciones'
@@ -35,10 +35,10 @@ export interface Question {
 
 export const CATEGORY_LABEL: Record<Category, string> = {
   deductiva: 'Lógica deductiva',
-  secuencias: 'Secuencias numéricas',
+  adivinanzas: 'Adivinanzas',
   patrones: 'Patrones y series',
   visual: 'Patrones visuales',
-  matematicas: 'Matemáticas recreativas',
+  palabras: 'Juegos de palabras',
   lateral: 'Pensamiento lateral',
   observacion: 'Observación',
   relaciones: 'Relaciones',
