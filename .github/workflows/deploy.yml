@@ -4,7 +4,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/1-percent-logic-game-pwa-mvye7r]
   workflow_dispatch:
 
 permissions:

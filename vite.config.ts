@@ -10,7 +10,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt', // updates are applied by src/pwa.ts at a safe moment
       injectRegister: false, // registered manually in src/pwa.ts
       manifest: {
         id: './',
@@ -38,7 +38,6 @@ export default defineConfig({
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true,
       },
     }),
   ],

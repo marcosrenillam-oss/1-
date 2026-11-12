@@ -8,6 +8,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { VictoryScreen } from './screens/VictoryScreen';
 import { motionMs } from './motion';
+import { setSafeToUpdate } from './pwa';
 
 type Screen =
   | { name: 'home' }
@@ -38,6 +39,8 @@ export default function App() {
 
   useEffect(() => writeSave(save), [save]);
   useEffect(() => requestPersistence(), []);
+  // App updates apply only on the home screen: never mid-game or over a result.
+  useEffect(() => setSafeToUpdate(screen.name === 'home'), [screen.name]);
 
   // Ignore taps while a screen transition is running (prevents double starts).
   const navigating = useRef(false);

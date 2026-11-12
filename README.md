@@ -32,7 +32,7 @@ se guarda en `localStorage`.
 
 ### Hosting gratuito con GitHub Pages
 
-El workflow `.github/workflows/deploy.yml` publica la app en cada push a `main`.
+El workflow `.github/workflows/deploy.yml` publica la app en cada push a la rama principal.
 Actívalo una vez en **Settings → Pages → Source: GitHub Actions**.
 GitHub Pages es gratuito para repositorios públicos. La build usa rutas relativas,
 así que funciona igual en cualquier subruta o en otros hostings estáticos gratuitos.
@@ -94,3 +94,10 @@ Cada partida se genera localmente:
 - Equilibrio de categorías (penalización exponencial) y sin dos categorías seguidas siempre que se pueda.
 - Rechazo de partidas casi idénticas a las 8 más recientes (nunca la misma secuencia).
 - Orden de respuestas barajado en cada pregunta.
+
+## Actualizaciones automáticas
+
+Cada cambio publicado se despliega solo. La app comprueba si hay versión nueva cada vez que se
+abre o vuelve a primer plano (con conexión) y la aplica con una recarga rápida **solo en la
+pantalla de inicio**: nunca interrumpe una partida ni la pantalla de resultado. El progreso
+y los récords se conservan.
