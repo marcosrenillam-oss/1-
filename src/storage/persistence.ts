@@ -42,6 +42,8 @@ export interface History {
   seen: Record<string, SeenInfo>;
   gamesStarted: number;
   recentRuns: string[][];
+  /** Last questions shown in any mode (variety across games and modes). */
+  last?: string[];
 }
 
 export interface AdventureState {
@@ -148,6 +150,7 @@ export function normalize(raw: unknown): SaveData {
     seen: seenMap(h.seen),
     gamesStarted: num(h.gamesStarted),
     recentRuns: Array.isArray(h.recentRuns) ? (h.recentRuns as unknown[]).filter(Array.isArray).slice(0, 10) as string[][] : [],
+    last: Array.isArray(h.last) ? (h.last as unknown[]).filter((x): x is string => typeof x === 'string').slice(-20) : [],
   };
   const rec = obj(r.records);
   for (const m of MODES) {

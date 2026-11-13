@@ -33,6 +33,8 @@ export interface Family {
   id: string;
   /** How many questions to create per tier for a mode. */
   counts: (mode: Mode) => Partial<Record<Tier, number>>;
+  /** Never repeat the same prompt anywhere in the bank (even with other options). */
+  uniquePrompt?: boolean;
   make: (c: Ctx) => Draft | null;
 }
 
@@ -99,6 +101,7 @@ function valid(d: Draft): boolean {
 export function buildGenerated(families: Family[]): Question[] {
   const out: Question[] = [];
   const seen = new Set<string>();
+  const prompts = new Set<string>();
   for (const level of LEVELS) {
     const name = LEVEL_NAME[level];
     // Levels 1-4 keep their historical seeds and ids ("gf-…", "gn-"…).
@@ -121,7 +124,9 @@ export function buildGenerated(families: Family[]): Question[] {
           const payload = JSON.stringify([d.items, d.cell, d.seq, d.target]);
           const key = `${level}|${d.prompt}|${(d.visual ?? []).join('/')}|${[...opts].sort().join('/')}|${payload}`;
           if (seen.has(key)) continue;
+          if (fam.uniquePrompt && prompts.has(d.prompt)) continue;
           seen.add(key);
+          prompts.add(d.prompt);
           n++;
           made++;
           out.push({

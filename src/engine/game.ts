@@ -57,6 +57,7 @@ const clone = (s: SaveData): SaveData => structuredClone(s);
 function markSeen(save: SaveData, id: string, gameNo: number) {
   const prev = save.history.seen[id];
   save.history.seen[id] = { count: (prev?.count ?? 0) + 1, last: gameNo };
+  save.history.last = [...(save.history.last ?? []), id].slice(-20);
 }
 
 export function currentQuestion(run: ActiveRun): Question {
@@ -152,7 +153,7 @@ export function timeLimitFor(q: Question): number {
 export function startRun(prev: SaveData, mode: GameMode, rng: Rng, timed = false): SaveData {
   const save = clone(prev);
   const slots = Array.from({ length: MAX_RUN }, (_, i) => runSlot(mode, i));
-  const ids = selectSlots(slots, save.history, rng);
+  const ids = selectSlots(slots, save.history, rng, { previous: save.history.last ?? [] });
   save.history.gamesStarted += 1;
   save.history.recentRuns = [ids.slice(0, STAGE_LEN * 2), ...save.history.recentRuns].slice(0, RECENT_KEEP);
   const orders = ids.map((id) => displayOrder(getQuestion(id)!, rng));
@@ -211,7 +212,7 @@ export function startAdventure(prev: SaveData, rng: Rng): SaveData | null {
   const boss = a.level > WORLD_LEVELS;
   const slot = boss ? { level: BOSS_LEVEL[a.world], tier: 6 as const } : adventureSlot(a.world, a.level);
   const [id] = selectSlots([slot], save.history, rng, {
-    previous: a.recent.slice(-19),
+    previous: [...a.recent, ...(save.history.last ?? [])].slice(-19),
     exclude: a.recent,
     ...(boss ? { pool: () => bossPool(a.world) } : {}),
   });

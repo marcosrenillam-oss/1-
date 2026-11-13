@@ -9,8 +9,8 @@ Un solo fallo y se acaba la partida.
 - **Contrarreloj**: igual, pero cada pregunta tiene un tiempo límite ajustado a lo larga y difícil que es.
 - **Aventura**: 5 mundos de 100 niveles (del 100 % al 1 %) en un mapa, con un **jefe final** muy difícil en
   cada mundo que abre el siguiente.
-- Más de **3800 preguntas** de 7 niveles de dificultad y más de 80 tipos: lógica, adivinanzas, pensamiento
-  lateral, paradojas, filosofía y falacias, palabras, cálculo cotidiano (nunca álgebra), patrones visuales y
+- Más de **4400 preguntas** de 7 niveles de dificultad y casi 100 tipos: lógica, adivinanzas, pensamiento
+  lateral, más de 200 paradojas, más de 450 de filosofía y falacias, palabras, cálculo cotidiano (nunca álgebra), patrones visuales y
   **juegos táctiles** (ordenar tocando, tocar la casilla, memoria, pintar cuadrículas) con vibración.
 - 100 % local y offline: sin backend, sin APIs, sin anuncios, sin coste. Se actualiza sola.
 

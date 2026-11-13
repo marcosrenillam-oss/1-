@@ -5,6 +5,7 @@ import { DIFICIL } from './dificil';
 import { EXPERTO } from './experto';
 import { ENIGMAS } from './enigmas';
 import { IDEAS } from './ideas';
+import { IDEAS2 } from './ideas2';
 import GENERATED from './generated.json';
 
 /**
@@ -15,7 +16,7 @@ import GENERATED from './generated.json';
  *  - generated.json: solver-verified template questions (`npm run gen`)
  * To extend it, append questions (any level, tier or category): the selector adapts.
  */
-export const ALL_QUESTIONS: Question[] = [...FACIL, ...NORMAL, ...DIFICIL, ...EXPERTO, ...ENIGMAS, ...IDEAS, ...(GENERATED as Question[])];
+export const ALL_QUESTIONS: Question[] = [...FACIL, ...NORMAL, ...DIFICIL, ...EXPERTO, ...ENIGMAS, ...IDEAS, ...IDEAS2, ...(GENERATED as Question[])];
 
 export const BANK: Record<Level, Question[]> = Object.fromEntries(
   LEVELS.map((l) => [l, ALL_QUESTIONS.filter((q) => q.level === l)]),
