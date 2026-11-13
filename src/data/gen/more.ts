@@ -20,7 +20,7 @@ const orientation: Family = {
   id: 'ori',
   counts: () => spread(1, 2, 2, 1, 1, 1),
   make: ({ D, rng }) => {
-    const n = D <= 2 ? 2 : D <= 5 ? 3 : D <= 7 ? 4 : 5;
+    const n = D <= 2 ? 2 : D <= 5 ? 3 : D <= 7 ? 4 : D <= 9 ? 5 : 7;
     let dir = randInt(rng, 0, 3);
     const path = [DIRS[dir]];
     const steps = Array.from({ length: n }, () => pick(rng, TURNS));
@@ -43,7 +43,7 @@ const route: Family = {
   id: 'rec',
   counts: () => spread(0, 1, 2, 2, 1, 1),
   make: ({ D, rng }) => {
-    const n = D <= 3 ? 3 : D <= 6 ? 4 : 5;
+    const n = D <= 3 ? 3 : D <= 6 ? 4 : D <= 9 ? 5 : 6;
     const V = [[0, 1, 'norte'], [1, 0, 'este'], [0, -1, 'sur'], [-1, 0, 'oeste']] as const;
     let x = 0;
     let y = 0;

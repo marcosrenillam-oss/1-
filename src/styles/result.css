@@ -262,3 +262,181 @@
   font-size: 22px;
   margin-left: 6px;
 }
+
+/* Adventure map */
+.screen--map {
+  padding-bottom: 0;
+}
+.map {
+  position: relative;
+}
+.map-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.map-title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.map-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--lime);
+  line-height: 1.1;
+}
+.map-pct {
+  font-size: 26px;
+  font-weight: 700;
+}
+.map-worlds {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+}
+.map-world {
+  height: 40px;
+  border-radius: 12px;
+  background: var(--anthracite);
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--seg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  display: grid;
+  place-items: center;
+  transition: background-color 0.2s, transform 0.15s var(--ease-out);
+}
+.map-world.is-active {
+  background: var(--seg);
+  color: var(--carbon);
+}
+.map-world.is-locked {
+  color: var(--gray-2);
+  opacity: 0.6;
+}
+.map-world-icon {
+  width: 16px;
+  height: 16px;
+}
+.map-tag {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--gray);
+}
+.map-path {
+  position: relative;
+  margin-top: 6px;
+}
+.map-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.map-line polyline {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.map-line-bg {
+  stroke: var(--anthracite-2);
+}
+.map-line-done {
+  stroke: var(--lime);
+  opacity: 0.85;
+}
+.node {
+  position: absolute;
+  width: 54px;
+  height: 54px;
+  margin: -27px 0 0 -27px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--anthracite);
+  box-shadow: inset 0 0 0 2px var(--anthracite-3), 0 0 0 5px var(--carbon);
+  color: var(--gray-2);
+  transition: transform 0.2s var(--ease-out);
+}
+.node-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.node-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--anthracite-3);
+}
+.node--done {
+  background: var(--lime);
+  color: var(--lime-ink);
+  box-shadow: 0 0 0 5px var(--carbon);
+}
+.node--current {
+  width: 70px;
+  height: 70px;
+  margin: -35px 0 0 -35px;
+  background: var(--carbon-2);
+  color: var(--lime);
+  box-shadow: inset 0 0 0 3px var(--lime), 0 0 0 5px var(--carbon), 0 0 30px var(--lime-glow);
+  animation: nodePulse 1.8s ease-in-out infinite;
+}
+.node--current .node-label {
+  font-size: 17px;
+}
+.node--current:active {
+  transform: scale(0.94);
+}
+@keyframes nodePulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px var(--lime), 0 0 0 5px var(--carbon), 0 0 18px var(--lime-glow); }
+  50% { box-shadow: inset 0 0 0 3px var(--lime), 0 0 0 5px var(--carbon), 0 0 38px var(--lime-glow); }
+}
+.node--mile.node--locked {
+  color: var(--gray);
+}
+.node--boss {
+  width: 92px;
+  height: 92px;
+  margin: -46px 0 0 -46px;
+  border-radius: 28px;
+  flex-direction: column;
+  gap: 0;
+}
+.node-crown {
+  width: 34px;
+  height: 34px;
+}
+.node-boss-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.node--boss.node--current {
+  width: 100px;
+  height: 100px;
+  margin: -50px 0 0 -50px;
+}
+.node--just {
+  animation: nodeJust 0.8s var(--ease-spring) both;
+}
+@keyframes nodeJust {
+  0% { transform: scale(0.6); background: var(--anthracite); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.map-cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  padding: 18px 0 calc(var(--sab) + 16px);
+  background: linear-gradient(to top, var(--carbon) 0, var(--carbon) calc(100% - 18px), rgba(11, 12, 14, 0));
+}
+.result-eyebrow.is-win {
+  color: var(--lime);
+}

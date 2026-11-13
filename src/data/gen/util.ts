@@ -1,12 +1,13 @@
 import { seededRng, shuffle, type Rng } from '../../engine/rng';
-import type { Category, Mode, Question, Tier } from '../types';
+import { LEVELS, type Category, type Level, type Mode, type QKind, type Question, type Tier } from '../types';
 
-export const MODE_ORDER: Mode[] = ['facil', 'normal', 'dificil', 'experto'];
+/** Legacy names keep ids and per-tier counts stable for levels 1-4. */
+const LEVEL_NAME: Record<Level, Mode> = { 1: 'facil', 2: 'normal', 3: 'dificil', 4: 'experto', 5: 'experto', 6: 'experto', 7: 'experto' };
 
 export interface Ctx {
-  mode: Mode;
+  level: Level;
   tier: Tier;
-  /** Global difficulty 1-9: mode (0-3) + tier (1-6). */
+  /** Global difficulty 1-12: level (1-7) - 1 + tier (1-6). */
   D: number;
   rng: Rng;
 }
@@ -18,6 +19,14 @@ export interface Draft {
   wrong: string[];
   expl: string;
   visual?: string[];
+  /** Interactive answer mechanics (default choice: correct + 3 wrong). */
+  kind?: QKind;
+  items?: string[];
+  cell?: number;
+  size?: number;
+  seq?: number[];
+  ordered?: boolean;
+  target?: string;
 }
 
 export interface Family {
@@ -69,34 +78,55 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
-/** Deterministically builds every family for every mode. */
+function valid(d: Draft): boolean {
+  switch (d.kind ?? 'choice') {
+    case 'choice': {
+      const opts = [d.correct, ...d.wrong];
+      return opts.length === 4 && new Set(opts).size === 4;
+    }
+    case 'order':
+      return !!d.items && d.items.length >= 3 && new Set(d.items).size === d.items.length;
+    case 'tap':
+      return d.cell !== undefined && !!d.visual;
+    case 'memory':
+      return !!d.size && !!d.seq && d.seq.length > 0;
+    case 'paint':
+      return !!d.target && /^[01]{9}$/.test(d.target) && d.target.includes('1');
+  }
+}
+
+/** Deterministically builds every family for every level. */
 export function buildGenerated(families: Family[]): Question[] {
   const out: Question[] = [];
   const seen = new Set<string>();
-  for (const mode of MODE_ORDER) {
-    const modeIdx = MODE_ORDER.indexOf(mode);
+  for (const level of LEVELS) {
+    const name = LEVEL_NAME[level];
+    // Levels 1-4 keep their historical seeds and ids ("gf-…", "gn-"…).
+    const seedKey = level <= 4 ? name : `L${level}`;
+    const prefix = level <= 4 ? `g${name[0]}` : `g${level}`;
     for (const fam of families) {
-      const rng = seededRng(hash(`${mode}:${fam.id}`));
+      const rng = seededRng(hash(`${seedKey}:${fam.id}`));
       let n = 0;
-      const counts = fam.counts(mode);
+      const counts = fam.counts(name);
       for (const [tierStr, k] of Object.entries(counts)) {
         const tier = Number(tierStr) as Tier;
         let made = 0;
         let tries = 0;
         while (made < (k ?? 0) && tries < (k ?? 0) * 80) {
           tries++;
-          const d = fam.make({ mode, tier, D: modeIdx + tier, rng });
-          if (!d) continue;
-          const opts = [d.correct, ...d.wrong];
-          if (opts.length !== 4 || new Set(opts).size !== 4) continue;
-          const key = `${mode}|${d.prompt}|${(d.visual ?? []).join('/')}|${[...opts].sort().join('/')}`;
+          const d = fam.make({ level, tier, D: level - 1 + tier, rng });
+          if (!d || !valid(d)) continue;
+          const kind = d.kind ?? 'choice';
+          const opts = kind === 'choice' ? [d.correct, ...d.wrong] : [];
+          const payload = JSON.stringify([d.items, d.cell, d.seq, d.target]);
+          const key = `${level}|${d.prompt}|${(d.visual ?? []).join('/')}|${[...opts].sort().join('/')}|${payload}`;
           if (seen.has(key)) continue;
           seen.add(key);
           n++;
           made++;
           out.push({
-            id: `g${mode[0]}-${fam.id}${n}`,
-            mode,
+            id: `${prefix}-${fam.id}${n}`,
+            level,
             tier,
             category: d.cat,
             prompt: d.prompt,
@@ -105,6 +135,13 @@ export function buildGenerated(families: Family[]): Question[] {
             explanation: d.expl,
             style: fam.id,
             ...(d.visual ? { visual: d.visual } : {}),
+            ...(kind !== 'choice' ? { kind } : {}),
+            ...(d.items ? { items: d.items } : {}),
+            ...(d.cell !== undefined ? { cell: d.cell } : {}),
+            ...(d.size ? { size: d.size } : {}),
+            ...(d.seq ? { seq: d.seq } : {}),
+            ...(d.ordered !== undefined ? { ordered: d.ordered } : {}),
+            ...(d.target ? { target: d.target } : {}),
           });
         }
       }

@@ -1,4 +1,4 @@
-import { RUN_LENGTH } from '../engine/difficulty';
+import { STAGE_LEN as RUN_LENGTH } from '../engine/difficulty';
 
 interface Props {
   /** Number of questions already answered correctly. */

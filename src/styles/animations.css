@@ -78,7 +78,7 @@
 @keyframes correctPop {
   0% { transform: scale(1); box-shadow: 0 0 0 0 var(--lime-glow); }
   35% { transform: scale(1.025); }
-  100% { transform: scale(1); box-shadow: 0 0 0 14px rgba(200, 255, 46, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 14px color-mix(in srgb, var(--lime) 0%, transparent); }
 }
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
@@ -135,8 +135,8 @@
   100% { opacity: 1; transform: scale(1); }
 }
 @keyframes victoryGlow {
-  0%, 100% { text-shadow: 0 0 24px rgba(200, 255, 46, 0.35), 0 0 70px rgba(200, 255, 46, 0.15); }
-  50% { text-shadow: 0 0 36px rgba(200, 255, 46, 0.6), 0 0 110px rgba(200, 255, 46, 0.25); }
+  0%, 100% { text-shadow: 0 0 24px color-mix(in srgb, var(--lime) 35%, transparent), 0 0 70px color-mix(in srgb, var(--lime) 15%, transparent); }
+  50% { text-shadow: 0 0 36px color-mix(in srgb, var(--lime) 60%, transparent), 0 0 110px color-mix(in srgb, var(--lime) 25%, transparent); }
 }
 
 /* ── Reusable animation classes ──────────────────────────────────────── */

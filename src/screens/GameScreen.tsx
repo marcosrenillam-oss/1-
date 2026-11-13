@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { getQuestion } from '../data/questions';
 import { CATEGORY_LABEL, type Question } from '../data/types';
-import { MODE_INFO, RUN_LENGTH, TIER_LABEL } from '../engine/difficulty';
-import type { AnswerOutcome, RunResult } from '../engine/game';
+import { MAX_RUN, MODE_INFO, STAGE_LEN, STAGE_THEME, STAGES, TIER_LABEL, WORLD_LEVELS, WORLDS } from '../engine/difficulty';
+import { answerText, type AnswerOutcome, type Response, type RunResult } from '../engine/game';
 import type { ActiveRun } from '../storage/persistence';
-import { glyphCount, hasGlyph, RichText } from '../components/Glyph';
+import { AnswerArea, answerHint } from '../components/Answers';
+import { RichText } from '../components/Glyph';
 import { IconArrow, IconCheck, IconClock, IconClose, IconCross } from '../components/Icons';
 import { ProgressBar } from '../components/ProgressBar';
 import { VisualBlock } from '../components/VisualBlock';
+import { haptic } from '../haptics';
 import { motionMs } from '../motion';
 
 interface Props {
   run: ActiveRun;
-  onSubmit: (displayPos: number) => AnswerOutcome;
+  onSubmit: (r: Response) => AnswerOutcome;
   onFinish: (result: RunResult) => void;
   onAbandon: () => void;
   /** Contrarreloj: start the clock of the question on screen. */
@@ -22,7 +24,34 @@ interface Props {
   onTimeout: () => RunResult | null;
 }
 
-/** Remaining ms until `deadline`, refreshed ~10 times per second while active. */
+interface Shown {
+  q: Question;
+  order: number[];
+  index: number;
+}
+
+type Phase = 'answering' | 'correct' | 'wrong' | 'leaving';
+
+const fromRun = (run: ActiveRun): Shown => ({ q: getQuestion(run.ids[run.index])!, order: run.orders[run.index], index: run.index });
+
+function promptSize(text: string): string {
+  if (text.length > 260) return 'prompt--xs';
+  if (text.length > 170) return 'prompt--sm';
+  if (text.length > 90) return 'prompt--md';
+  return 'prompt--lg';
+}
+
+function rgba(hex: string, a: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+/** CSS variables that recolour the whole question screen. */
+export function themeVars(stage: number): CSSProperties {
+  const t = STAGE_THEME[Math.max(0, Math.min(STAGE_THEME.length - 1, stage))];
+  return { ['--lime' as string]: t.accent, ['--lime-ink' as string]: t.ink, ['--lime-dim' as string]: rgba(t.accent, 0.12), ['--lime-glow' as string]: rgba(t.accent, 0.42) };
+}
+
 function useRemaining(deadline: number | undefined, active: boolean): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -34,39 +63,13 @@ function useRemaining(deadline: number | undefined, active: boolean): number | n
   return deadline === undefined ? null : Math.max(0, deadline - now);
 }
 
-interface Shown {
-  q: Question;
-  order: number[];
-  /** 0-based index in the run */
-  index: number;
-}
-
-type Phase = 'answering' | 'correct' | 'wrong' | 'leaving';
-
-const LETTERS = ['A', 'B', 'C', 'D'];
-
-function fromRun(run: ActiveRun): Shown {
-  return { q: getQuestion(run.ids[run.index])!, order: run.orders[run.index], index: run.index };
-}
-
-function promptSize(text: string): string {
-  if (text.length > 260) return 'prompt--xs';
-  if (text.length > 170) return 'prompt--sm';
-  if (text.length > 90) return 'prompt--md';
-  return 'prompt--lg';
-}
-
-function optionKind(text: string): string {
-  if (!hasGlyph(text)) return text.length > 60 ? 'opt--long' : '';
-  if (text.includes('{g-')) return 'opt--grid';
-  return glyphCount(text) > 3 ? 'opt--glyphs-many' : 'opt--glyphs';
-}
-
 export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, onTimeout }: Props) {
   const [shown, setShown] = useState<Shown>(() => fromRun(run));
-  const [selected, setSelected] = useState<number | null>(null);
+  const [response, setResponse] = useState<Response | null>(null);
   const [phase, setPhase] = useState<Phase>('answering');
-  const [victory, setVictory] = useState<RunResult | null>(null);
+  const [final, setFinal] = useState<RunResult | null>(null);
+  const [pendingStage, setPendingStage] = useState<number | null>(null);
+  const [stageOverlay, setStageOverlay] = useState<number | null>(null);
   const [confirmExit, setConfirmExit] = useState(false);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
   const [timedOut, setTimedOut] = useState(false);
@@ -74,59 +77,78 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
   latestRun.current = run;
   const timers = useRef<number[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
+  const locked = useRef(false);
+  const answeredAt = useRef(0);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => {
     timers.current.push(window.setTimeout(fn, ms));
   };
 
+  const adventure = run.type === 'adventure';
   const { q, order, index } = shown;
-  const number = index + 1;
-  const done = index + (phase === 'correct' || phase === 'leaving' ? 1 : 0);
-
-  // Guards against double taps submitting twice before React re-renders.
-  const locked = useRef(false);
-  // "Siguiente" appears where "Confirmar" was: ignore the 2nd tap of a double tap.
-  const answeredAt = useRef(0);
+  const stage = adventure ? run.world ?? 0 : Math.floor(index / STAGE_LEN);
+  const vars = themeVars(stage);
 
   const confirm = useCallback(() => {
-    if (selected === null || phase !== 'answering' || locked.current) return;
+    if (response === null || phase !== 'answering' || locked.current) return;
     locked.current = true;
-    const out = onSubmit(selected);
+    const out = onSubmit(response);
     if (out.kind === 'wrong') {
+      haptic('error');
       if (out.result.timeout) setTimedOut(true);
       setPhase('wrong');
       setFlash('bad');
-      later(() => onFinish(out.result), motionMs(1500, 900));
+      if (adventure) {
+        setFinal(out.result);
+        answeredAt.current = performance.now();
+        later(() => scroller.current?.closest('.screen')?.scrollTo({ top: 99999, behavior: 'smooth' }), 300);
+      } else later(() => onFinish(out.result), motionMs(1600, 900));
       return;
     }
-    if (out.kind === 'victory') setVictory(out.result);
+    haptic(out.kind === 'correct' && out.stageCleared ? 'heavy' : 'success');
+    if (out.kind === 'victory') setFinal(out.result);
+    if (out.kind === 'correct' && out.stageCleared) setPendingStage(out.stageCleared);
     answeredAt.current = performance.now();
     setPhase('correct');
     setFlash('good');
     later(() => setFlash(null), 900);
-    // Bring the explanation into view on small screens.
     later(() => scroller.current?.closest('.screen')?.scrollTo({ top: 99999, behavior: 'smooth' }), 260);
-  }, [selected, phase, onSubmit, onFinish]);
+  }, [response, phase, onSubmit, onFinish, adventure]);
 
-  const next = useCallback(() => {
-    if (phase !== 'correct' || !locked.current) return;
-    if (performance.now() - answeredAt.current < 320) return;
-    locked.current = false; // only one "next" per answer
-    if (victory) {
-      onFinish(victory);
-      return;
-    }
+  const advance = useCallback(() => {
     setPhase('leaving');
     later(() => {
-      const r = latestRun.current;
-      setShown(fromRun(r));
-      setSelected(null);
+      setShown(fromRun(latestRun.current));
+      setResponse(null);
       setPhase('answering');
       setFlash(null);
+      locked.current = false;
       scroller.current?.closest('.screen')?.scrollTo({ top: 0 });
     }, motionMs(260, 0));
-  }, [phase, victory, onFinish]);
+  }, []);
+
+  const next = useCallback(() => {
+    if (phase === 'answering' || phase === 'leaving') return;
+    if (performance.now() - answeredAt.current < 320) return;
+    if (final) {
+      onFinish(final);
+      return;
+    }
+    if (phase !== 'correct') return;
+    if (pendingStage) {
+      haptic('heavy');
+      setStageOverlay(pendingStage);
+      setPendingStage(null);
+      return;
+    }
+    advance();
+  }, [phase, final, pendingStage, onFinish, advance]);
+
+  const closeStage = () => {
+    setStageOverlay(null);
+    advance();
+  };
 
   // ── Contrarreloj ────────────────────────────────────────────────────
   const timed = !!run.timed;
@@ -140,45 +162,79 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
     locked.current = true;
     const result = onTimeout();
     if (!result) return;
+    haptic('error');
     setTimedOut(true);
     setPhase('wrong');
     setFlash('bad');
     later(() => onFinish(result), motionMs(1700, 1000));
   }, [timed, phase, remaining, onTimeout, onFinish]);
-  const limitMs = timer ? timer.deadline - timer.startedAt : 1;
+  const limitMs = timer ? Math.max(1, timer.deadline - timer.startedAt) : 1;
   const secs = remaining === null ? null : Math.ceil(remaining / 1000);
 
-  const correctPos = order.indexOf(q.answer);
-  const info = MODE_INFO[run.mode];
-  const tier = TIER_LABEL[q.tier];
+  const kind = q.kind ?? 'choice';
+  const hint = answerHint(q);
+  const inStage = index % STAGE_LEN;
+  const done = inStage + (phase === 'correct' || phase === 'leaving' ? 1 : 0);
+  const percent = adventure ? WORLD_LEVELS + 1 - (run.level ?? 1) : 0;
+  const lastOfRun = !adventure && index === MAX_RUN - 1;
+
+  let goodTitle = 'Correcto';
+  if (adventure) goodTitle = run.boss ? '¡Jefe derrotado!' : '¡Nivel superado!';
+  else if (pendingStage) goodTitle = pendingStage === 1 ? '¡Victoria! Fase 1 superada' : `¡Fase ${pendingStage} superada!`;
+  else if (lastOfRun && final) goodTitle = '¡100 de 100!';
+  const goodButton = adventure ? 'Continuar' : final ? 'Ver resultado' : pendingStage ? 'Siguiente fase' : 'Siguiente';
 
   return (
-    <div className={`screen-inner game${phase === 'wrong' ? ' game--impact' : ''}`} ref={scroller}>
-      {flash && createPortal(<div className={`flash flash--${flash}`} key={`${flash}-${index}`} aria-hidden="true" />, document.body)}
+    <div className={`screen-inner game${phase === 'wrong' ? ' game--impact' : ''}${run.boss ? ' game--boss' : ''}`} ref={scroller} style={vars} data-stage={stage}>
+      {flash && createPortal(<div className={`flash flash--${flash}`} style={vars} key={`${flash}-${index}`} aria-hidden="true" />, document.body)}
 
       <header className="game-top">
-        <button type="button" className="icon-btn" aria-label="Abandonar partida" onClick={() => setConfirmExit(true)} disabled={phase !== 'answering'}>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label={adventure ? 'Salir al mapa' : 'Abandonar partida'}
+          onClick={() => (adventure ? onAbandon() : setConfirmExit(true))}
+          disabled={phase !== 'answering'}
+        >
           <IconClose />
         </button>
         <span className={`game-mode${timed ? ' game-mode--timed' : ''}`}>
           {timed && <IconClock className="game-mode-icon" />}
-          {info.label}
+          {adventure ? `Mundo ${(run.world ?? 0) + 1} · ${WORLDS[run.world ?? 0].name}` : MODE_INFO[run.mode].label}
         </span>
       </header>
 
       <div className="game-counter">
-        <div className="counter display tnum" aria-label={`Pregunta ${number} de ${RUN_LENGTH}`}>
-          <span className="counter-now" key={number}>
-            {String(number).padStart(2, '0')}
-          </span>
-          <span className="counter-of">/{RUN_LENGTH}</span>
-        </div>
-        <span className={`tier-label${q.tier >= 5 ? ' tier-label--hot' : ''}`} key={`tier-${q.tier}`}>
-          {tier}
+        {adventure ? (
+          <div className="counter display tnum" aria-label={run.boss ? 'Jefe final' : `Nivel ${percent} %`}>
+            <span className="counter-now" key={run.level}>{run.boss ? 'Jefe' : percent}</span>
+            {!run.boss && <span className="counter-of">%</span>}
+          </div>
+        ) : (
+          <div className="counter display tnum" aria-label={`Pregunta ${index + 1} de ${MAX_RUN}`}>
+            <span className="counter-now" key={index}>{String(index + 1).padStart(2, '0')}</span>
+            <span className="counter-of">/{MAX_RUN}</span>
+          </div>
+        )}
+        <span className={`tier-label${q.tier >= 5 || run.boss ? ' tier-label--hot' : ''}`} key={`tier-${q.tier}-${stage}`}>
+          {adventure ? (run.boss ? 'Desafío final' : `Nivel ${run.level}/${WORLD_LEVELS}`) : `Fase ${stage + 1} · ${TIER_LABEL[q.tier]}`}
         </span>
       </div>
 
-      <ProgressBar done={done} current={index} failed={phase === 'wrong'} />
+      {adventure ? (
+        <div className="world-bar" aria-hidden="true">
+          <span style={{ transform: `scaleX(${run.boss ? 1 : ((run.level ?? 1) - 1) / WORLD_LEVELS})` }} />
+        </div>
+      ) : (
+        <>
+          <div className="phase-pips" aria-label={`Fase ${stage + 1} de ${STAGES}`}>
+            {STAGE_THEME.map((t, i) => (
+              <span key={i} className={`pip${i < stage ? ' is-done' : i === stage ? ' is-current' : ''}`} style={{ ['--pip' as string]: t.accent }} />
+            ))}
+          </div>
+          <ProgressBar done={done} current={inStage} failed={phase === 'wrong'} />
+        </>
+      )}
 
       {timed && (
         <div
@@ -194,77 +250,38 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
         </div>
       )}
 
-      <main className={`qwrap${phase === 'leaving' ? ' q-exit' : ' q-enter'}`} key={q.id}>
-        <span className="q-cat">{CATEGORY_LABEL[q.category]}</span>
+      <main className={`qwrap${phase === 'leaving' ? ' q-exit' : ' q-enter'}`} key={`${q.id}-${index}`}>
+        <span className="q-cat">{run.boss ? 'Jefe final' : CATEGORY_LABEL[q.category]}</span>
         <h1 className={`prompt display ${promptSize(q.prompt)}`}>
           <RichText text={q.prompt} />
         </h1>
-        {q.visual && (
+        {q.visual && kind !== 'tap' && (
           <div className="q-visual">
             <VisualBlock rows={q.visual} />
           </div>
         )}
-
-        <div className="options" role="radiogroup" aria-label="Respuestas">
-          {order.map((authored, pos) => {
-            const text = q.options[authored];
-            const isSel = selected === pos;
-            let state = '';
-            if (phase === 'correct' || (phase === 'leaving' && !victory)) {
-              if (pos === correctPos) state = 'is-correct';
-              else state = 'is-dim';
-            } else if (phase === 'wrong') {
-              if (isSel) state = 'is-wrong';
-              else if (pos === correctPos) state = 'is-answer';
-              else state = 'is-dim';
-            } else if (isSel) state = 'is-selected';
-            return (
-              <span className="opt-slot" key={pos} style={{ ['--i' as string]: pos }}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={isSel}
-                className={`opt ${optionKind(text)} ${state}`}
-                disabled={phase !== 'answering'}
-                onClick={() => setSelected(pos)}
-              >
-                <span className="opt-letter display">
-                  {state === 'is-correct' || state === 'is-answer' ? (
-                    <IconCheck className="opt-icon" />
-                  ) : state === 'is-wrong' ? (
-                    <IconCross className="opt-icon" />
-                  ) : (
-                    LETTERS[pos]
-                  )}
-                </span>
-                <span className="opt-text">
-                  <RichText text={text} />
-                </span>
-              </button>
-              </span>
-            );
-          })}
-        </div>
+        {hint && phase === 'answering' && <p className="q-hint">{hint}</p>}
+        <AnswerArea q={q} order={order} phase={phase} value={response} onChange={setResponse} />
       </main>
 
       <div className="game-actions">
         {phase === 'answering' && (
-          <button type="button" className="btn btn-primary btn-lg btn-confirm" disabled={selected === null} onClick={confirm}>
+          <button type="button" className="btn btn-primary btn-lg btn-confirm" disabled={response === null} onClick={confirm}>
             Confirmar
           </button>
         )}
-        {(phase === 'correct' || (phase === 'leaving' && !victory)) && (
+        {(phase === 'correct' || (phase === 'leaving' && !final)) && (
           <div className={`feedback feedback--good${phase === 'leaving' ? ' is-leaving' : ''}`} role="status">
             <div className="feedback-head">
               <span className="feedback-badge">
                 <IconCheck />
               </span>
-              <span className="feedback-title display">{victory ? '¡20 de 20!' : 'Correcto'}</span>
-              <span className="feedback-streak display tnum">+1</span>
+              <span className="feedback-title display">{goodTitle}</span>
+              {!adventure && <span className="feedback-streak display tnum">+1</span>}
             </div>
             <p className="feedback-text">{q.explanation}</p>
             <button type="button" className="btn btn-primary btn-lg" onClick={next} autoFocus>
-              <span>{victory ? 'Ver resultado' : 'Siguiente'}</span>
+              <span>{goodButton}</span>
               <IconArrow className="btn-icon" />
             </button>
           </div>
@@ -275,29 +292,69 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
               <span className="feedback-badge">
                 <IconCross />
               </span>
-              <span className="feedback-title display">{timedOut ? 'Se acabó el tiempo' : 'Incorrecto'}</span>
+              <span className="feedback-title display">{timedOut ? 'Se acabó el tiempo' : adventure ? 'Casi… inténtalo otra vez' : 'Incorrecto'}</span>
             </div>
+            {adventure && (
+              <>
+                {kind === 'choice' && (
+                  <p className="feedback-answer">
+                    Respuesta: <b><RichText text={answerText(q)} /></b>
+                  </p>
+                )}
+                <p className="feedback-text">{q.explanation}</p>
+                <button type="button" className="btn btn-ghost btn-lg" onClick={next} autoFocus>
+                  Volver al mapa
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {confirmExit && createPortal(
-        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="exit-title" onClick={() => setConfirmExit(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h2 id="exit-title" className="display">¿Abandonar la partida?</h2>
-            <p>
-              Contará como partida perdida con <b className="tnum">{index}</b> {index === 1 ? 'acierto' : 'aciertos'}.
-            </p>
-            <button type="button" className="btn btn-primary btn-lg" onClick={() => setConfirmExit(false)} autoFocus>
-              Seguir jugando
-            </button>
-            <button type="button" className="btn btn-ghost btn-lg btn-danger" onClick={onAbandon}>
-              Abandonar
-            </button>
-          </div>
-        </div>,
-        document.body,
-      )}
+      {stageOverlay !== null &&
+        createPortal(
+          <div className="stage-clear" style={themeVars(stageOverlay)} role="dialog" aria-modal="true" aria-labelledby="stage-title">
+            <div className="stage-clear-sweep" aria-hidden="true" />
+            <div className="stage-clear-body">
+              <span className="eyebrow stage-clear-eyebrow">Fase {stageOverlay + 1} de {STAGES} · {STAGE_THEME[stageOverlay].name}</span>
+              <p id="stage-title" className="stage-clear-num display tnum">
+                {stageOverlay * STAGE_LEN}
+                <small>/{MAX_RUN}</small>
+              </p>
+              <p className="stage-clear-title display">{stageOverlay === 1 ? '¡Victoria!' : `¡${stageOverlay * STAGE_LEN} seguidas!`}</p>
+              <p className="stage-clear-sub">
+                {stageOverlay === 1
+                  ? 'Ya has superado el desafío. Ahora sigue hasta 100: la dificultad sube muchísimo a partir de aquí.'
+                  : 'La dificultad sube muchísimo a partir de aquí. Nuevo color, nueva fase.'}
+              </p>
+              <button type="button" className="btn btn-primary btn-xl" onClick={closeStage} autoFocus>
+                <span>Continuar</span>
+                <IconArrow className="btn-icon" />
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {confirmExit &&
+        createPortal(
+          <div className="modal" style={vars} role="dialog" aria-modal="true" aria-labelledby="exit-title" onClick={() => setConfirmExit(false)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              <h2 id="exit-title" className="display">¿Terminar la partida?</h2>
+              <p>
+                Se guardará con <b className="tnum">{index}</b> {index === 1 ? 'acierto' : 'aciertos'}
+                {index >= STAGE_LEN ? ' (ya cuenta como victoria).' : '.'}
+              </p>
+              <button type="button" className="btn btn-primary btn-lg" onClick={() => setConfirmExit(false)} autoFocus>
+                Seguir jugando
+              </button>
+              <button type="button" className="btn btn-ghost btn-lg btn-danger" onClick={onAbandon}>
+                Terminar
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

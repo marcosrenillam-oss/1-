@@ -1,245 +1,251 @@
 import { describe, expect, it } from 'vitest';
 import { BANK, getQuestion } from '../data/questions';
-import { MODES, RUN_LENGTH, SLOT_TIERS } from './difficulty';
-import { abandonRun, startRun, startTimer, submitAnswer, sanitizeRun, timeLimitFor, timeoutRun } from './game';
+import type { Question } from '../data/types';
+import { MAX_RUN, MODES, runSlot, STAGE_LEN, WORLD_LEVELS } from './difficulty';
+import {
+  abandonRun, bossPool, checkResponse, sanitizeRun, startAdventure, startRun, startTimer, submitAnswer, timeLimitFor, timeoutRun,
+} from './game';
 import { seededRng } from './rng';
+import { STYLE_WINDOW } from './selector';
 import { emptySave, normalize, type SaveData } from '../storage/persistence';
 
-function correctPos(save: SaveData): number {
+/** The response that answers the current question correctly. */
+function rightResponse(save: SaveData): number | string {
   const run = save.run!;
   const q = getQuestion(run.ids[run.index])!;
-  return run.orders[run.index].indexOf(q.answer);
+  const order = run.orders[run.index];
+  switch (q.kind ?? 'choice') {
+    case 'choice': return order.indexOf(q.answer);
+    case 'order': return q.items!.join('|');
+    case 'tap': return String(q.cell);
+    case 'memory': return q.seq!.join(',');
+    case 'paint': return q.target!;
+  }
 }
-function wrongPos(save: SaveData): number {
+function wrongResponse(save: SaveData): number | string {
   const run = save.run!;
   const q = getQuestion(run.ids[run.index])!;
-  return run.orders[run.index].findIndex((i) => i !== q.answer);
+  const order = run.orders[run.index];
+  switch (q.kind ?? 'choice') {
+    case 'choice': return order.findIndex((i) => i !== q.answer);
+    case 'order': return [...q.items!].reverse().join('|');
+    case 'tap': return String((q.cell! + 1) % 9);
+    case 'memory': return '99';
+    case 'paint': return q.target!.replace(/./g, (c) => (c === '1' ? '0' : '1'));
+  }
 }
 
-describe('run generation', () => {
+describe('runs of 100', () => {
   for (const mode of MODES) {
-    it(`${mode}: 20 unique questions, right mode, non-decreasing tiers`, () => {
-      const rng = seededRng(42);
+    it(`${mode}: 100 unique questions following level and tier of each slot`, () => {
+      let save = startRun(emptySave(), mode, seededRng(1));
+      const ids = save.run!.ids;
+      expect(ids).toHaveLength(MAX_RUN);
+      expect(new Set(ids).size).toBe(MAX_RUN);
+      ids.forEach((id, i) => {
+        const q = getQuestion(id)!;
+        const s = runSlot(mode, i);
+        expect(q.level, `slot ${i}`).toBe(s.level);
+        expect(q.tier, `slot ${i}`).toBe(s.tier);
+      });
+      save = abandonRun(save)!.save;
+    });
+
+    it(`${mode}: no style repeats within ${STYLE_WINDOW} questions, no category twice in a row`, () => {
+      const rng = seededRng(5);
       let save = emptySave();
-      for (let g = 0; g < 30; g++) {
+      for (let g = 0; g < 8; g++) {
         save = startRun(save, mode, rng);
-        const ids = save.run!.ids;
-        expect(ids).toHaveLength(RUN_LENGTH);
-        expect(new Set(ids).size).toBe(RUN_LENGTH);
-        const tiers = ids.map((id) => getQuestion(id)!.tier);
-        tiers.forEach((t, i) => expect(t).toBe(SLOT_TIERS[i]));
-        ids.forEach((id) => expect(getQuestion(id)!.mode).toBe(mode));
+        const qs = save.run!.ids.map((id) => getQuestion(id)!);
+        for (let i = 0; i < qs.length; i++) {
+          const win = qs.slice(Math.max(0, i - STYLE_WINDOW + 1), i);
+          expect(win.map((q) => q.style ?? q.category)).not.toContain(qs[i].style ?? qs[i].category);
+          if (i > 0) expect(qs[i].category).not.toBe(qs[i - 1].category);
+        }
         save = abandonRun(save)!.save;
       }
     });
   }
 
-  it('consecutive runs differ and never repeat a recent sequence', () => {
-    const rng = seededRng(7);
-    let save = emptySave();
-    const runs: string[][] = [];
-    for (let g = 0; g < 40; g++) {
-      save = startRun(save, 'normal', rng);
-      runs.push(save.run!.ids);
-      save = abandonRun(save)!.save;
-    }
-    for (let i = 1; i < runs.length; i++) {
-      for (let j = Math.max(0, i - 8); j < i; j++) {
-        expect(runs[i].join()).not.toBe(runs[j].join());
-      }
-      const prev = new Set(runs[i - 1]);
-      const shared = runs[i].filter((id) => prev.has(id)).length;
-      expect(shared).toBeLessThanOrEqual(12);
-    }
+  it('difficulty jumps every 20 questions', () => {
+    expect([0, 20, 40, 60, 80].map((i) => runSlot('normal', i).level)).toEqual([1, 2, 3, 4, 5]);
+    expect([0, 20, 40, 60, 80].map((i) => runSlot('dificil', i).level)).toEqual([3, 4, 5, 6, 7]);
+    expect(runSlot('normal', 19).tier).toBe(6);
+    expect(runSlot('normal', 20).tier).toBe(1);
   });
 
-  it('prioritises unseen questions', () => {
-    const rng = seededRng(3);
-    let save = emptySave();
-    // Two full winning runs → 40 distinct questions shown when possible.
-    const shown = new Set<string>();
-    for (let g = 0; g < 2; g++) {
-      save = startRun(save, 'dificil', rng);
-      while (save.run) {
-        shown.add(save.run.ids[save.run.index]);
-        const out = submitAnswer(save, correctPos(save));
-        save = out.save;
-      }
+  it('20 correct is a phase clear and the run continues; 100 is a full victory', () => {
+    let save = startRun(emptySave(), 'normal', seededRng(2));
+    const cleared: number[] = [];
+    for (let i = 0; i < MAX_RUN - 1; i++) {
+      const out = submitAnswer(save, rightResponse(save));
+      expect(out.kind).toBe('correct');
+      if (out.kind === 'correct' && out.stageCleared) cleared.push(out.stageCleared);
+      save = out.save;
     }
-    // Tier 6 only has 5 questions and tier 5 has 8, so the two runs can share
-    // at most a few; most of the 40 must be distinct.
-    expect(shown.size).toBeGreaterThanOrEqual(36);
+    expect(cleared).toEqual([1, 2, 3, 4]);
+    const last = submitAnswer(save, rightResponse(save));
+    expect(last.kind).toBe('victory');
+    if (last.kind !== 'victory') return;
+    expect(last.result).toMatchObject({ score: 100, complete: true, stages: 5, won: true });
+    expect(last.save.records.normal.classic).toMatchObject({ played: 1, completed: 1, best: 100, bestStage: 5 });
   });
 
-  it('balances categories (no category more than 4 times, no back-to-back)', () => {
-    const rng = seededRng(99);
-    let save = emptySave();
-    let backToBack = 0;
-    for (let g = 0; g < 50; g++) {
-      save = startRun(save, 'experto', rng);
-      const cats = save.run!.ids.map((id) => getQuestion(id)!.category);
-      const counts = new Map<string, number>();
-      cats.forEach((c) => counts.set(c, (counts.get(c) ?? 0) + 1));
-      expect(Math.max(...counts.values())).toBeLessThanOrEqual(4);
-      for (let i = 1; i < cats.length; i++) if (cats[i] === cats[i - 1]) backToBack++;
-      save = abandonRun(save)!.save;
-    }
-    expect(backToBack / 50).toBeLessThan(1); // rare, on average < 1 per run
+  it('a mistake after phase 1 ends the run but still counts as a victory', () => {
+    let save = startRun(emptySave(), 'dificil', seededRng(3));
+    for (let i = 0; i < 27; i++) save = submitAnswer(save, rightResponse(save)).save;
+    const out = submitAnswer(save, wrongResponse(save));
+    expect(out.kind).toBe('wrong');
+    if (out.kind !== 'wrong') return;
+    expect(out.result).toMatchObject({ score: 27, reached: 28, won: true, stages: 1 });
+    expect(out.save.run).toBeNull();
+    expect(out.save.records.dificil.classic).toMatchObject({ played: 1, completed: 1, best: 27, bestStage: 1 });
+    expect(out.save.records.normal.classic.played).toBe(0);
   });
-});
 
-describe('variety', () => {
-  it('never repeats a puzzle style inside a run (and rarely repeats a category back to back)', () => {
-    for (const mode of MODES) {
-      const rng = seededRng(77);
-      let save = emptySave();
-      let repeats = 0;
-      for (let g = 0; g < 40; g++) {
-        save = startRun(save, mode, rng);
-        const qs = save.run!.ids.map((id) => getQuestion(id)!);
-        const styles = qs.map((q) => q.style ?? q.category);
-        repeats += styles.length - new Set(styles).size;
-        save = abandonRun(save)!.save;
-      }
-      expect(repeats, mode).toBe(0);
-    }
+  it('a mistake before 20 is a defeat', () => {
+    let save = startRun(emptySave(), 'normal', seededRng(4));
+    for (let i = 0; i < 5; i++) save = submitAnswer(save, rightResponse(save)).save;
+    const out = submitAnswer(save, wrongResponse(save));
+    if (out.kind !== 'wrong') throw new Error('expected wrong');
+    expect(out.result.won).toBe(false);
+    expect(out.save.records.normal.classic).toMatchObject({ played: 1, completed: 0, best: 5 });
+  });
+
+  it('abandoning keeps the score reached', () => {
+    let save = startRun(emptySave(), 'normal', seededRng(6));
+    for (let i = 0; i < 22; i++) save = submitAnswer(save, rightResponse(save)).save;
+    const out = abandonRun(save)!;
+    expect(out.result).toMatchObject({ score: 22, abandoned: true, won: true });
+  });
+
+  it('round-trips through storage', () => {
+    let save = startRun(emptySave(), 'dificil', seededRng(7));
+    save = submitAnswer(save, rightResponse(save)).save;
+    const restored = sanitizeRun(normalize(JSON.parse(JSON.stringify(save))));
+    expect(restored.run).toEqual(save.run);
+    expect(restored.records).toEqual(save.records);
   });
 });
 
 describe('contrarreloj', () => {
-  it('time limits are sensible', () => {
-    for (const m of MODES) for (const q of BANK[m]) {
+  it('time limits are sensible for every question', () => {
+    for (const lvl of Object.values(BANK)) for (const q of lvl) {
       const t = timeLimitFor(q);
       expect(t).toBeGreaterThanOrEqual(20);
       expect(t).toBeLessThanOrEqual(120);
     }
   });
 
-  it('answering in time continues and accumulates time; winning records the best time', () => {
-    let save = startRun(emptySave(), 'facil', seededRng(30), true);
+  it('records the time of the first phase and keeps separate records', () => {
+    let save = startRun(emptySave(), 'normal', seededRng(8), true);
     let now = 1_000_000;
-    for (let i = 0; i < RUN_LENGTH; i++) {
+    for (let i = 0; i < STAGE_LEN; i++) {
       save = startTimer(save, now);
-      expect(save.run!.timer!.index).toBe(i);
-      expect(startTimer(save, now + 5)).toBe(save); // idempotent
-      now += 3000;
-      const out = submitAnswer(save, correctPos(save), now);
-      save = out.save;
-      if (i < RUN_LENGTH - 1) expect(out.kind).toBe('correct');
-      else {
-        expect(out.kind).toBe('victory');
-        if (out.kind === 'victory') {
-          expect(out.result.timed).toBe(true);
-          expect(out.result.totalMs).toBe(60_000);
-          expect(out.result.newBestTime).toBe(true);
-        }
-      }
+      expect(startTimer(save, now + 5)).toBe(save);
+      now += 2000;
+      save = submitAnswer(save, rightResponse(save), now).save;
     }
-    expect(save.crono.facil).toMatchObject({ played: 1, completed: 1, best: 20, bestTimeMs: 60_000 });
-    expect(save.stats.facil.played).toBe(0); // classic records untouched
-  });
-
-  it('running out of time ends the run', () => {
-    let save = startRun(emptySave(), 'experto', seededRng(31), true);
-    save = startTimer(save, 0);
-    save = submitAnswer(save, correctPos(save), 1000).save;
-    save = startTimer(save, 2000);
-    const deadline = save.run!.timer!.deadline;
-    expect(timeoutRun(save, deadline - 1)).toBeNull();
-    const out = timeoutRun(save, deadline + 1)!;
-    expect(out.result.timeout).toBe(true);
-    expect(out.result.score).toBe(1);
-    expect(out.save.run).toBeNull();
-    expect(out.save.crono.experto).toMatchObject({ played: 1, best: 1 });
+    expect(save.run!.phase1Ms).toBe(40_000);
+    save = startTimer(save, now);
+    const out = timeoutRun(save, save.run!.timer!.deadline + 1)!;
+    expect(out.result).toMatchObject({ timeout: true, score: 20, won: true, newBestTime: true });
+    expect(out.save.records.normal.crono).toMatchObject({ played: 1, completed: 1, bestTimeMs: 40_000 });
+    expect(out.save.records.normal.classic.played).toBe(0);
   });
 
   it('answering after the deadline counts as a timeout', () => {
-    let save = startRun(emptySave(), 'normal', seededRng(32), true);
+    let save = startRun(emptySave(), 'dificil', seededRng(9), true);
     save = startTimer(save, 0);
-    const late = save.run!.timer!.deadline + 10;
-    const out = submitAnswer(save, correctPos(save), late);
+    const out = submitAnswer(save, rightResponse(save), save.run!.timer!.deadline + 10);
     expect(out.kind).toBe('wrong');
     if (out.kind === 'wrong') expect(out.result.timeout).toBe(true);
   });
 });
 
-describe('game flow', () => {
-  it('correct answers advance; 20 correct answers is a victory', () => {
-    let save = startRun(emptySave(), 'facil', seededRng(1));
-    for (let i = 0; i < RUN_LENGTH - 1; i++) {
-      const out = submitAnswer(save, correctPos(save));
-      expect(out.kind).toBe('correct');
-      save = out.save;
-      expect(save.run!.index).toBe(i + 1);
-    }
-    const last = submitAnswer(save, correctPos(save));
-    expect(last.kind).toBe('victory');
-    if (last.kind !== 'victory') return;
-    expect(last.save.run).toBeNull();
-    expect(last.result.score).toBe(20);
-    expect(last.result.newRecord).toBe(true);
-    const s = last.save.stats.facil;
-    expect(s).toMatchObject({ played: 1, completed: 1, best: 20, bestReached: 20 });
-  });
-
-  it('a wrong answer ends the run and records the score', () => {
-    let save = startRun(emptySave(), 'normal', seededRng(5));
-    for (let i = 0; i < 6; i++) save = submitAnswer(save, correctPos(save)).save;
-    const out = submitAnswer(save, wrongPos(save));
+describe('adventure', () => {
+  it('passing a level advances 1 %; failing keeps you on it', () => {
+    let save = startAdventure(emptySave(), seededRng(10))!;
+    expect(save.run).toMatchObject({ type: 'adventure', world: 0, level: 1, boss: false });
+    let out = submitAnswer(save, rightResponse(save));
+    expect(out.kind).toBe('victory');
+    expect(out.save.adventure.level).toBe(2);
+    save = startAdventure(out.save, seededRng(11))!;
+    out = submitAnswer(save, wrongResponse(save));
     expect(out.kind).toBe('wrong');
-    if (out.kind !== 'wrong') return;
+    expect(out.save.adventure.level).toBe(2);
     expect(out.save.run).toBeNull();
-    expect(out.result.score).toBe(6);
-    expect(out.result.reached).toBe(7);
-    expect(out.result.newRecord).toBe(true);
-    expect(out.save.stats.normal).toMatchObject({ played: 1, completed: 0, best: 6, bestReached: 7 });
-    // Next run starts again from question 1.
-    const again = startRun(out.save, 'normal', seededRng(6));
-    expect(again.run!.index).toBe(0);
   });
 
-  it('records are kept per difficulty', () => {
-    let save = startRun(emptySave(), 'experto', seededRng(8));
-    for (let i = 0; i < 3; i++) save = submitAnswer(save, correctPos(save)).save;
-    save = submitAnswer(save, wrongPos(save)).save;
-    expect(save.stats.experto.best).toBe(3);
-    expect(save.stats.facil.best).toBe(0);
-    expect(save.stats.normal.played).toBe(0);
-    expect(save.lastMode).toBe('experto');
+  it('100 levels lead to a boss; beating it opens the next world; 5 worlds finish the adventure', () => {
+    let save = emptySave();
+    const rng = seededRng(12);
+    const seen = new Set<string>();
+    for (let w = 0; w < 5; w++) {
+      save.adventure.level = WORLD_LEVELS; // jump near the end of the world
+      save = startAdventure(save, rng)!;
+      save = submitAnswer(save, rightResponse(save)).save;
+      expect(save.adventure.level).toBe(WORLD_LEVELS + 1);
+      save = startAdventure(save, rng)!;
+      expect(save.run!.boss).toBe(true);
+      const boss = getQuestion(save.run!.ids[0])!;
+      expect(bossPool(w).map((q) => q.id)).toContain(boss.id);
+      seen.add(boss.id);
+      const out = submitAnswer(save, rightResponse(save));
+      if (out.kind !== 'victory') throw new Error('boss should be beaten');
+      expect(out.result.worldCleared).toBe(true);
+      save = out.save;
+    }
+    expect(save.adventure.finished).toBe(true);
+    expect(startAdventure(save, rng)).toBeNull();
   });
 
-  it('a lower score never lowers the record', () => {
-    let save = startRun(emptySave(), 'facil', seededRng(10));
-    for (let i = 0; i < 5; i++) save = submitAnswer(save, correctPos(save)).save;
-    save = submitAnswer(save, wrongPos(save)).save;
-    save = startRun(save, 'facil', seededRng(11));
-    const out = submitAnswer(save, wrongPos(save));
-    expect(out.kind).toBe('wrong');
-    if (out.kind === 'wrong') expect(out.result.newRecord).toBe(false);
-    expect(out.save.stats.facil.best).toBe(5);
-    expect(out.save.stats.facil.played).toBe(2);
+  it('consecutive adventure levels vary in style', () => {
+    let save = emptySave();
+    const rng = seededRng(13);
+    const styles: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      save = startAdventure(save, rng)!;
+      const q = getQuestion(save.run!.ids[0])!;
+      styles.push(q.style ?? q.category);
+      save = submitAnswer(save, rightResponse(save)).save;
+    }
+    for (let i = 1; i < styles.length; i++) expect(styles.slice(Math.max(0, i - 10), i)).not.toContain(styles[i]);
   });
+});
 
-  it('survives a save/load round trip (persistence)', () => {
-    let save = startRun(emptySave(), 'dificil', seededRng(12));
-    save = submitAnswer(save, correctPos(save)).save;
-    const restored = sanitizeRun(normalize(JSON.parse(JSON.stringify(save))));
-    expect(restored.run).toEqual(save.run);
-    expect(restored.stats).toEqual(save.stats);
+describe('interactive answers', () => {
+  const find = (k: Question['kind']) => Object.values(BANK).flat().find((q) => q.kind === k)!;
+  it('order / tap / memory / paint are checked exactly', () => {
+    const o = find('order');
+    expect(checkResponse(o, [], o.items!.join('|'))).toBe(true);
+    expect(checkResponse(o, [], [...o.items!].reverse().join('|'))).toBe(false);
+    const t = find('tap');
+    expect(checkResponse(t, [], String(t.cell))).toBe(true);
+    const m = Object.values(BANK).flat().find((q) => q.kind === 'memory' && !q.ordered)!;
+    expect(checkResponse(m, [], [...m.seq!].reverse().join(','))).toBe(true);
+    const p = find('paint');
+    expect(checkResponse(p, [], p.target!)).toBe(true);
+    expect(checkResponse(p, [], '000000000')).toBe(false);
   });
+});
 
-  it('normalize tolerates garbage', () => {
-    expect(normalize(null).stats.facil.played).toBe(0);
-    expect(normalize({ lastMode: 'x', stats: 5, run: { mode: 'facil' } }).run).toBeNull();
-  });
-
-  it('option order is shuffled per question', () => {
-    const save = startRun(emptySave(), 'normal', seededRng(13));
-    const firstCorrect = save.run!.ids.map((id, i) => save.run!.orders[i].indexOf(getQuestion(id)!.answer));
-    expect(new Set(firstCorrect).size).toBeGreaterThan(1);
-  });
-
-  it('every bank has enough material for the selector', () => {
-    for (const m of MODES) expect(BANK[m].length).toBeGreaterThanOrEqual(50);
+describe('migration', () => {
+  it('keeps seen history and records from the first save format', () => {
+    const v1 = {
+      version: 1,
+      lastMode: 'normal',
+      stats: {
+        facil: { played: 3, completed: 1, best: 20, bestReached: 20, gamesStarted: 3, seen: { f01: { count: 2, last: 3 } }, recentRuns: [] },
+        normal: { played: 2, completed: 0, best: 9, bestReached: 10, gamesStarted: 2, seen: { n01: { count: 1, last: 2 } }, recentRuns: [] },
+      },
+      run: null,
+    };
+    const s = normalize(v1);
+    expect(s.version).toBe(2);
+    expect(s.history.seen.f01.count).toBe(2);
+    expect(s.history.seen.n01.count).toBe(1);
+    expect(s.records.normal.classic.best).toBe(9);
+    expect(normalize(null).run).toBeNull();
   });
 });

@@ -1,16 +1,18 @@
 # 1%
 
 Juego de razonamiento lógico para iPhone, instalable en la pantalla de inicio (PWA).
-20 preguntas seguidas, cada vez más difíciles. Un solo fallo y vuelves a empezar.
+Un solo fallo y se acaba la partida.
 
-- 4 modos independientes (Fácil, Normal, Difícil, Experto), cada uno con sus propias preguntas, récord y estadísticas.
-- Más de 2000 preguntas (unas 470-530 por modo) de más de 60 tipos distintos: lógica deductiva, adivinanzas,
-  pensamiento lateral, juegos de palabras, patrones visuales, giros y espejos, observación, cálculo cotidiano
-  (porcentajes, horas, cambio… nunca álgebra), series, relaciones y enigmas clásicos. Todas con explicación.
-- Dos tipos de partida: **Clásico** (sin tiempo) y **Contrarreloj** (cada pregunta tiene un límite de tiempo
-  ajustado a lo larga y difícil que es; si se agota, pierdes). Cada uno con sus propios récords; en
-  contrarreloj también se guarda el mejor tiempo total.
-- 100 % local y offline: sin backend, sin APIs, sin anuncios, sin coste.
+- **Normal y Difícil**, partidas de hasta **100 preguntas** en 5 fases de 20. Llegar a 20 ya es una victoria;
+  cada fase sube mucho la dificultad (y dentro de cada fase sube cada 4 preguntas). Cada fase tiene su color:
+  verde, azul, amarillo, rosa y rojo.
+- **Contrarreloj**: igual, pero cada pregunta tiene un tiempo límite ajustado a lo larga y difícil que es.
+- **Aventura**: 5 mundos de 100 niveles (del 100 % al 1 %) en un mapa, con un **jefe final** muy difícil en
+  cada mundo que abre el siguiente.
+- Más de **3800 preguntas** de 7 niveles de dificultad y más de 80 tipos: lógica, adivinanzas, pensamiento
+  lateral, paradojas, filosofía y falacias, palabras, cálculo cotidiano (nunca álgebra), patrones visuales y
+  **juegos táctiles** (ordenar tocando, tocar la casilla, memoria, pintar cuadrículas) con vibración.
+- 100 % local y offline: sin backend, sin APIs, sin anuncios, sin coste. Se actualiza sola.
 
 ## Probarlo en local
 

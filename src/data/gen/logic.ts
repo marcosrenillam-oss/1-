@@ -28,6 +28,7 @@ interface OrderCtx {
   qAt: (k: number, n: number) => string;
   qAfter: (x: string) => string;
   expl: (order: string[]) => string;
+  tap: string;
 }
 
 const ORDER_CTX: OrderCtx[] = [
@@ -43,6 +44,7 @@ const ORDER_CTX: OrderCtx[] = [
     qAt: (k, n) => (k === n - 1 ? '¿Quién llegó en último lugar?' : `¿Quién llegó en ${ORD_M[k]} lugar?`),
     qAfter: (x) => `¿Quién llegó justo detrás de ${x}?`,
     expl: (o) => `El orden de llegada es: ${o.join(', ')}.`,
+    tap: 'Toca los nombres en orden de llegada, del primero al último.',
   },
   {
     intro: (ns) => `${list(ns)} hacen cola para entrar al cine.`,
@@ -57,6 +59,7 @@ const ORDER_CTX: OrderCtx[] = [
       k === n - 1 ? '¿Quién está al final de la cola?' : k === 0 ? '¿Quién está al principio de la cola?' : `¿Quién ocupa la ${ORD_F[k]} posición?`,
     qAfter: (x) => `¿Quién está justo detrás de ${x}?`,
     expl: (o) => `La cola, de principio a fin, es: ${o.join(', ')}.`,
+    tap: 'Toca los nombres en el orden de la cola, de principio a fin.',
   },
   {
     intro: (ns) => `${list(ns)} viven en un edificio de ${NUM[ns.length]} plantas, cada uno en una planta distinta.`,
@@ -71,6 +74,7 @@ const ORDER_CTX: OrderCtx[] = [
       k === n - 1 ? '¿Quién vive en la planta más alta?' : k === 0 ? '¿Quién vive en la planta más baja?' : `¿Quién vive en la ${ORD_F[k]} planta?`,
     qAfter: (x) => `¿Quién vive justo encima de ${x}?`,
     expl: (o) => `De abajo arriba: ${o.join(', ')}.`,
+    tap: 'Toca los nombres de la planta más baja a la más alta.',
   },
 ];
 
@@ -81,16 +85,14 @@ interface Clue {
   atFor?: string;
 }
 
-const ordering: Family = {
-  id: 'ord',
-  counts: (m) => (m === 'facil' ? spread(3, 3, 3, 3, 2, 2) : m === 'normal' ? spread(2, 3, 3, 3, 2, 2) : spread(2, 2, 3, 3, 3, 2)),
-  make: ({ D, rng }) => {
+/** Builds a solved ordering puzzle with a unique solution (or null). */
+export function orderingCore(D: number, rng: () => number) {
     const n = D <= 2 ? 3 : D <= 4 ? 4 : D <= 7 ? 5 : 6;
     const names = sample(rng, NAMES, n);
     const sol = shuffle(names, rng);
     const pos: Pos = Object.fromEntries(sol.map((x, i) => [x, i]));
     const C = pick(rng, ORDER_CTX);
-    const types = D <= 2 ? ['at', 'before', 'justBefore'] : D <= 4 ? ['before', 'justBefore', 'notExtreme', 'notAt', 'at'] : ['before', 'justBefore', 'notExtreme', 'between', 'notAdj', 'notAt'];
+    const types = D <= 2 ? ['at', 'before', 'justBefore'] : D <= 4 ? ['before', 'justBefore', 'notExtreme', 'notAt', 'at'] : D <= 9 ? ['before', 'justBefore', 'notExtreme', 'between', 'notAdj', 'notAt'] : ['before', 'justBefore', 'between', 'notAdj'];
     const pool: Clue[] = [];
     for (const a of names)
       for (const b of names) {
@@ -123,6 +125,16 @@ const ordering: Family = {
       if (count(without) === 1) clues = without;
     }
     if (D >= 3 && clues.filter((c) => c.atFor).length > 1) return null;
+    return { C, names, sol, clues, n };
+}
+
+const ordering: Family = {
+  id: 'ord',
+  counts: (m) => (m === 'facil' ? spread(3, 3, 3, 3, 2, 2) : m === 'normal' ? spread(2, 3, 3, 3, 2, 2) : spread(2, 2, 3, 3, 3, 2)),
+  make: ({ D, rng }) => {
+    const core = orderingCore(D, rng);
+    if (!core) return null;
+    const { C, names, sol, clues, n } = core;
     let prompt: string;
     let answer: string;
     if (rng() < 0.6) {

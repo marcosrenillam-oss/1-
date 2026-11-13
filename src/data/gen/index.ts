@@ -2,11 +2,12 @@ import type { Question } from '../types';
 import { LOGIC_FAMILIES } from './logic';
 import { MORE_FAMILIES } from './more';
 import { NUMBER_FAMILIES } from './numbers';
+import { TOUCH_FAMILIES } from './touch';
 import { VISUAL_FAMILIES } from './visual';
 import { WORD_FAMILIES } from './words';
 import { buildGenerated } from './util';
 
-export const ALL_FAMILIES = [...LOGIC_FAMILIES, ...VISUAL_FAMILIES, ...WORD_FAMILIES, ...NUMBER_FAMILIES, ...MORE_FAMILIES];
+export const ALL_FAMILIES = [...LOGIC_FAMILIES, ...VISUAL_FAMILIES, ...WORD_FAMILIES, ...NUMBER_FAMILIES, ...MORE_FAMILIES, ...TOUCH_FAMILIES];
 
 /**
  * Template-based questions, each verified by a solver (unique answer).

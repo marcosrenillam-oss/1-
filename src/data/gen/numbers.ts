@@ -369,7 +369,7 @@ const sudoku: Family = {
     const perm = shuffle([1, 2, 3, 4], rng);
     let g = base.map((v) => perm[v - 1]);
     if (rng() < 0.5) g = [8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6, 7].map((i) => g[i]); // swap row bands
-    const holes = D <= 4 ? 6 : D <= 6 ? 8 : 10;
+    const holes = D <= 4 ? 6 : D <= 6 ? 8 : D <= 9 ? 10 : 11;
     const blanks = sample(rng, Array.from({ length: 16 }, (_, i) => i), holes);
     const puzzle = g.map((v, i) => (blanks.includes(i) ? 0 : v));
     if (sudokuSolutions(puzzle.slice()) !== 1) return null;
