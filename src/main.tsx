@@ -7,6 +7,7 @@ import './styles/animations.css';
 import './styles/home.css';
 import './styles/game.css';
 import './styles/result.css';
+import './styles/fit.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -15,6 +16,18 @@ createRoot(document.getElementById('root')!).render(
 );
 
 setupPWA();
+
+// Block every kind of zoom (pinch, Safari gestures, double tap): the app is
+// designed to fit the screen exactly, like a native app.
+const stop = (e: Event) => e.preventDefault();
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, stop, { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !(e.target instanceof HTMLElement && e.target.closest('button'))) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 
 // Test hook (end-to-end tests only): enabled by a flag in local storage.
 try {

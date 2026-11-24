@@ -1,0 +1,17 @@
+/* Fit any iPhone width: scale the big display numbers with the screen. */
+.home-hero .logo { font-size: clamp(88px, 31vw, 128px) !important; }
+.counter-now { font-size: clamp(52px, 17vw, 72px); }
+.result-num { font-size: clamp(84px, 28vw, 120px); }
+.victory-num { font-size: clamp(104px, 34vw, 150px); }
+.stage-clear-num { font-size: clamp(92px, 30vw, 130px); }
+@media (max-width: 360px) {
+  :root { --gutter: 16px; }
+  .prompt--lg { font-size: 23px; }
+  .gtype--3 .gtype-opt { font-size: 12.5px; }
+}
+
+/* Very short screens (iPhone SE in landscape-like heights, zoomed display mode). */
+@media (max-height: 640px) {
+  .home-hero { min-height: 130px; padding: 6px 0 10px; }
+  .game-counter { margin-top: 6px; margin-bottom: 10px; }
+}
