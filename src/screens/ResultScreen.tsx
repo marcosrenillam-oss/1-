@@ -40,6 +40,11 @@ export function ResultScreen({ result, onRetry, onHome }: Props) {
           {result.timed ? ' · Contrarreloj' : ''}
           {!result.abandoned && <> · Caíste en la {result.reached}</>}
         </p>
+        {!!result.energy && (
+          <span className="energy-pill display tnum reveal" style={{ ['--d' as string]: '220ms' }}>
+            +{result.energy.toLocaleString('es-ES')} ⚡ para tu Núcleo
+          </span>
+        )}
         {(result.newRecord || result.newBestTime) && (
           <span className="badge badge--lime reveal" style={{ ['--d' as string]: '260ms' }}>
             {result.newRecord ? 'Nuevo récord' : 'Nuevo mejor tiempo'}

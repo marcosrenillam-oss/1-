@@ -1,5 +1,6 @@
 import { MODES, type GameMode } from '../engine/difficulty';
 import type { SeenInfo } from '../engine/selector';
+import { emptyCore, normalizeCore, type CoreState } from '../engine/core';
 
 export type Play = 'classic' | 'crono' | 'adventure';
 
@@ -18,6 +19,8 @@ export interface ActiveRun {
   timer?: { index: number; startedAt: number; deadline: number };
   /** Contrarreloj: time spent on answered questions. */
   usedMs?: number;
+  /** Energy earned in this run (chip). */
+  energy?: number;
   /** Contrarreloj: time it took to clear the first phase (20). */
   phase1Ms?: number;
   /** Adventure: world (0-4), level (1-100) and whether it is the boss. */
@@ -65,6 +68,8 @@ export interface SaveData {
   history: History;
   records: Record<GameMode, { classic: PlayStats; crono: PlayStats }>;
   adventure: AdventureState;
+  /** «Tu Núcleo»: cosmetic chip built with energy. */
+  core: CoreState;
   run: ActiveRun | null;
 }
 
@@ -84,6 +89,7 @@ export function emptySave(): SaveData {
       dificil: { classic: emptyPlayStats(), crono: emptyPlayStats() },
     },
     adventure: emptyAdventure(),
+    core: emptyCore(),
     run: null,
   };
 }
@@ -158,6 +164,7 @@ export function normalize(raw: unknown): SaveData {
     base.records[m] = { classic: playStats(x.classic), crono: playStats(x.crono) };
   }
   const a = obj(r.adventure);
+  base.core = normalizeCore(r.core);
   base.adventure = {
     world: Math.min(4, num(a.world)),
     level: Math.max(1, Math.min(101, num(a.level) || 1)),

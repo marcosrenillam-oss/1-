@@ -440,3 +440,207 @@
 .result-eyebrow.is-win {
   color: var(--lime);
 }
+
+/* ── Tu Núcleo ─────────────────────────────────────────────────────────── */
+.energy-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--lime-dim);
+  color: var(--lime);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: badgePop 0.5s var(--ease-spring) both;
+}
+.core-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px -6px -8px 0;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  background: var(--carbon-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--lime);
+  font-size: 14px;
+  font-weight: 700;
+  transition: transform 0.15s var(--ease-out);
+}
+.core-btn:active {
+  transform: scale(0.95);
+}
+.core-btn-chip {
+  width: 30px;
+  height: 30px;
+}
+.core {
+  gap: 0;
+}
+.core-stage {
+  display: grid;
+  place-items: center;
+  margin-top: 8px;
+}
+.core-stage .chip {
+  width: min(100%, 330px);
+  height: auto;
+}
+.core-sub {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--gray-2);
+}
+.core-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.core-tabs::-webkit-scrollbar {
+  display: none;
+}
+.core-tab {
+  flex: none;
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: var(--anthracite);
+  color: var(--gray);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+}
+.core-tab.is-active {
+  background: var(--lime);
+  color: var(--lime-ink);
+}
+.core-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.core-hint,
+.core-max,
+.core-foot {
+  font-size: 13.5px;
+  color: var(--gray);
+}
+.core-foot {
+  margin-top: 18px;
+  padding-bottom: 8px;
+  color: var(--gray-2);
+  font-size: 12px;
+}
+.core-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.core-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--anthracite);
+  box-shadow: inset 0 0 0 1px var(--line);
+  text-align: left;
+  transition: transform 0.15s var(--ease-out), opacity 0.2s;
+}
+.core-item:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.core-item:disabled {
+  opacity: 0.4;
+}
+.core-item.is-active {
+  box-shadow: inset 0 0 0 2px var(--lime);
+}
+.core-item-name {
+  font-weight: 600;
+}
+.core-item-cost {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--lime);
+}
+.core-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 2px solid transparent;
+}
+.core-swatch--rainbow {
+  background: conic-gradient(#c8ff2e, #3d9bff, #a66bff, #ff4fa3, #ff3b3b, #ffd60a, #c8ff2e) !important;
+}
+.core-upgrade {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.core-expand {
+  margin-top: 4px;
+}
+
+/* Chip animations */
+.chip-slot {
+  cursor: pointer;
+}
+.chip-trace {
+  stroke-dasharray: none;
+}
+.chip--flujo .chip-trace {
+  stroke-dasharray: 6 8;
+  animation: chipFlow 1.2s linear infinite;
+}
+@keyframes chipFlow {
+  to { stroke-dashoffset: -28; }
+}
+.chip--pulso .chip-module {
+  animation: chipPulse 2.4s ease-in-out infinite;
+}
+@keyframes chipPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.chip--latido .chip-body,
+.chip--latido .chip-module {
+  transform-origin: 160px 160px;
+  animation: chipBeat 1.6s ease-in-out infinite;
+}
+@keyframes chipBeat {
+  0%, 60%, 100% { transform: scale(1); }
+  15% { transform: scale(1.03); }
+  30% { transform: scale(0.99); }
+}
+.chip-spin {
+  animation: chipSpin 3s linear infinite;
+}
+@keyframes chipSpin {
+  to { transform: rotate(360deg); }
+}
+.chip-orbit {
+  animation: chipSpin 6s linear infinite;
+}
+.chip--rainbow {
+  animation: chipHue 6s linear infinite;
+}
+@keyframes chipHue {
+  to { filter: hue-rotate(360deg); }
+}
+.chip-pins-glow {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.chip--built {
+  animation: chipBuilt 0.5s var(--ease-spring);
+}
+@keyframes chipBuilt {
+  0% { transform: scale(0.96); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}

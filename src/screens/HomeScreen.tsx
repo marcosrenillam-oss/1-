@@ -5,6 +5,8 @@ import type { Play, SaveData } from '../storage/persistence';
 import { IconArrow, IconClock, IconInfinity, IconMap } from '../components/Icons';
 import { LevelBars } from '../components/LevelBars';
 import { Logo } from '../components/Logo';
+import { Chip } from '../components/Chip';
+import { coreLevel } from '../engine/core';
 
 interface Props {
   save: SaveData;
@@ -13,6 +15,7 @@ interface Props {
   onMode: (m: GameMode) => void;
   onPlay: (p: Play) => void;
   onStart: () => void;
+  onCore: () => void;
 }
 
 const PLAYS: { id: Play; label: string; Icon: typeof IconClock }[] = [
@@ -21,7 +24,7 @@ const PLAYS: { id: Play; label: string; Icon: typeof IconClock }[] = [
   { id: 'adventure', label: 'Aventura', Icon: IconMap },
 ];
 
-export function HomeScreen({ save, mode, play, onMode, onPlay, onStart }: Props) {
+export function HomeScreen({ save, mode, play, onMode, onPlay, onStart, onCore }: Props) {
   const adventure = play === 'adventure';
   const s = save.records[mode][play === 'crono' ? 'crono' : 'classic'];
   const seen = Object.keys(save.history.seen).length;
@@ -32,8 +35,11 @@ export function HomeScreen({ save, mode, play, onMode, onPlay, onStart }: Props)
   return (
     <div className="screen-inner home">
       <header className="home-top reveal" style={{ ['--d' as string]: '0ms' }}>
-        <span className="eyebrow">Desafío de lógica</span>
-        <span className="eyebrow home-count tnum">{TOTAL_QUESTIONS.toLocaleString('es-ES')} preguntas</span>
+        <span className="eyebrow">Lógica · <span className="home-count tnum">{TOTAL_QUESTIONS.toLocaleString('es-ES')} preguntas</span></span>
+        <button type="button" className="core-btn" onClick={onCore} aria-label={`Abrir tu Núcleo, nivel ${coreLevel(save.core)}`}>
+          <Chip core={save.core} className="core-btn-chip" />
+          <span className="display tnum">⚡ {save.core.energy.toLocaleString('es-ES')}</span>
+        </button>
       </header>
 
       <section className="home-hero">

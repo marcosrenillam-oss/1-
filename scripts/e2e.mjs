@@ -283,6 +283,27 @@ check((await page.locator('.map-name').textContent()) === 'Laberinto', 'map show
 await page.getByRole('button', { name: 'Inicio' }).click();
 await settle(1000);
 
+// ── 6b. Tu Núcleo (cosmetic chip) ─────────────────────────────────────────
+s = await save();
+const energy0 = s.core.energy;
+check(energy0 > 0 && s.core.earned >= energy0, `correct answers earned energy (${energy0})`);
+await page.getByRole('button', { name: /Abrir tu Núcleo/ }).click();
+await settle(1000);
+check(await page.locator('.core-stage .chip').isVisible(), 'core: chip visible');
+await page.locator('.core-item:not(:disabled)').first().click();
+await settle(600);
+s = await save();
+check(s.core.slots.filter(Boolean).length === 1 && s.core.energy < energy0, 'core: module built with energy');
+await page.getByRole('tab', { name: 'Color' }).click();
+await page.locator('.core-item:not(.is-active):not(:disabled)').first().click();
+await settle(600);
+s = await save();
+check(s.core.color !== 'lima' && s.core.owned.includes(s.core.color), `core: colour bought and applied (${s.core.color})`);
+await shot('17b-core');
+await noHorizontalOverflow('core');
+await page.getByRole('button', { name: 'Inicio' }).click();
+await settle(1000);
+
 // ── 7. Offline ───────────────────────────────────────────────────────────
 await context.setOffline(true);
 await page.reload();

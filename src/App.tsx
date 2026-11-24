@@ -6,6 +6,8 @@ import { loadSave, requestPersistence, writeSave, type ActiveRun, type Play, typ
 import { GameScreen } from './screens/GameScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { MapScreen } from './screens/MapScreen';
+import { CoreScreen } from './screens/CoreScreen';
+import type { CoreState } from './engine/core';
 import { ResultScreen } from './screens/ResultScreen';
 import { VictoryScreen } from './screens/VictoryScreen';
 import { motionMs } from './motion';
@@ -13,6 +15,7 @@ import { setSafeToUpdate } from './pwa';
 
 type Screen =
   | { name: 'home' }
+  | { name: 'core' }
   | { name: 'map'; justPassed?: { world: number; level: number } | null }
   | { name: 'game' }
   | { name: 'result'; result: RunResult }
@@ -65,6 +68,8 @@ export default function App() {
     setPlay(p);
     commit({ ...saveRef.current, lastPlay: p });
   }, [commit]);
+
+  const changeCore = useCallback((c: CoreState) => commit({ ...saveRef.current, core: c }), [commit]);
 
   const startGame = useCallback((m: GameMode, p: Play) => {
     if (navigating.current) return;
@@ -125,7 +130,7 @@ export default function App() {
   }, [commit, go]);
 
   let content: ReactNode;
-  const home = <HomeScreen save={save} mode={mode} play={play} onMode={changeMode} onPlay={changePlay} onStart={() => startGame(mode, play)} />;
+  const home = <HomeScreen save={save} mode={mode} play={play} onMode={changeMode} onPlay={changePlay} onStart={() => startGame(mode, play)} onCore={() => go({ name: 'core' })} />;
   if (screen.name === 'game' && runRef.current) {
     content = (
       <GameScreen
@@ -138,6 +143,8 @@ export default function App() {
         onTimeout={timeout}
       />
     );
+  } else if (screen.name === 'core') {
+    content = <CoreScreen core={save.core} onChange={changeCore} onHome={() => go({ name: 'home' })} />;
   } else if (screen.name === 'map') {
     content = <MapScreen save={save} justPassed={screen.justPassed} onPlay={playAdventure} onHome={() => go({ name: 'home' })} />;
   } else if (screen.name === 'result') {

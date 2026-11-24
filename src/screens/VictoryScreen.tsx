@@ -75,6 +75,11 @@ export function VictoryScreen({ result, onRetry, onHome }: Props) {
             Tiempo total <b>{formatMs(result.totalMs)}</b>
           </p>
         )}
+        {!!result.energy && (
+          <span className="energy-pill display tnum reveal" style={{ ['--d' as string]: '1160ms' }}>
+            +{result.energy.toLocaleString('es-ES')} ⚡ para tu Núcleo
+          </span>
+        )}
         {!adventure && result.newRecord && (
           <span className="badge badge--lime reveal" style={{ ['--d' as string]: '1180ms' }}>
             Nuevo récord · 100/100

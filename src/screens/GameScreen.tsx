@@ -73,6 +73,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
   const [confirmExit, setConfirmExit] = useState(false);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+  const [earned, setEarned] = useState(0);
   const latestRun = useRef(run);
   latestRun.current = run;
   const timers = useRef<number[]>([]);
@@ -107,6 +108,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
       return;
     }
     haptic(out.kind === 'correct' && out.stageCleared ? 'heavy' : 'success');
+    setEarned(out.earned);
     if (out.kind === 'victory') setFinal(out.result);
     if (out.kind === 'correct' && out.stageCleared) setPendingStage(out.stageCleared);
     answeredAt.current = performance.now();
@@ -277,7 +279,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
                 <IconCheck />
               </span>
               <span className="feedback-title display">{goodTitle}</span>
-              {!adventure && <span className="feedback-streak display tnum">+1</span>}
+              <span className="feedback-streak display tnum" key={`e-${index}`}>+{earned} ⚡</span>
             </div>
             <p className="feedback-text">{q.explanation}</p>
             <button type="button" className="btn btn-primary btn-lg" onClick={next} autoFocus>

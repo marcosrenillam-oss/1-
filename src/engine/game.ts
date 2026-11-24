@@ -4,6 +4,7 @@ import type { ActiveRun, PlayStats, SaveData } from '../storage/persistence';
 import { adventureSlot, BOSS_LEVEL, MAX_RUN, runSlot, STAGE_LEN, WORLD_LEVELS, WORLDS, type GameMode } from './difficulty';
 import { shuffle, type Rng } from './rng';
 import { selectSlots } from './selector';
+import { addEnergy, BOSS_BONUS, energyForAnswer, FULL_RUN_BONUS, PHASE_BONUS } from './core';
 
 export const formatMs = (ms: number) => {
   const t = Math.round(ms / 1000);
@@ -38,6 +39,8 @@ export interface RunResult {
   timeout?: boolean;
   totalMs?: number;
   newBestTime?: boolean;
+  /** Energy (⚡) earned in this run or level. */
+  energy?: number;
   // Adventure
   world?: number;
   level?: number;
@@ -47,8 +50,8 @@ export interface RunResult {
 }
 
 export type AnswerOutcome =
-  | { kind: 'correct'; save: SaveData; stageCleared?: number }
-  | { kind: 'victory'; save: SaveData; result: RunResult }
+  | { kind: 'correct'; save: SaveData; stageCleared?: number; earned: number }
+  | { kind: 'victory'; save: SaveData; result: RunResult; earned: number }
   | { kind: 'wrong'; save: SaveData; result: RunResult };
 
 const RECENT_KEEP = 10;
@@ -191,6 +194,7 @@ function finishRun(save: SaveData, run: ActiveRun, score: number, abandoned: boo
     newRecord: score > prevBest,
     stats: structuredClone(stats),
     timed,
+    energy: run.energy ?? 0,
     ...(timed ? { totalMs: run.usedMs ?? 0, newBestTime } : {}),
     ...extra,
   };
@@ -306,8 +310,10 @@ export function submitAnswer(prev: SaveData, response: Response, now = Date.now(
   const correct = checkResponse(q, order, response);
 
   if (run.type === 'adventure') {
-    const result = finishAdventure(save, run, correct, { questionId: q.id, response, order });
-    return correct ? { kind: 'victory', save, result } : { kind: 'wrong', save, result };
+    const earned = correct ? energyForAnswer(q.level, 1) * 2 + (run.boss ? BOSS_BONUS : 0) : 0;
+    addEnergy(save.core, earned);
+    const result = finishAdventure(save, run, correct, { questionId: q.id, response, order, energy: earned });
+    return correct ? { kind: 'victory', save, result, earned } : { kind: 'wrong', save, result };
   }
 
   if (run.timed && run.timer?.index === run.index) {
@@ -323,15 +329,20 @@ export function submitAnswer(prev: SaveData, response: Response, now = Date.now(
     const result = finishRun(save, run, run.index, false, { questionId: q.id, response, order });
     return { kind: 'wrong', save, result };
   }
+  let earned = energyForAnswer(q.level, run.index + 1);
+  if ((run.index + 1) % STAGE_LEN === 0) earned += PHASE_BONUS((run.index + 1) / STAGE_LEN);
+  if (run.index === MAX_RUN - 1) earned += FULL_RUN_BONUS;
+  addEnergy(save.core, earned);
+  run.energy = (run.energy ?? 0) + earned;
   if (run.index === MAX_RUN - 1) {
     const result = finishRun(save, run, MAX_RUN, false, {});
-    return { kind: 'victory', save, result };
+    return { kind: 'victory', save, result, earned };
   }
   run.index += 1;
   if (run.timed && run.index === STAGE_LEN) run.phase1Ms = run.usedMs ?? 0;
   markSeen(save, run.ids[run.index], run.gameNo);
   const stageCleared = run.index % STAGE_LEN === 0 ? run.index / STAGE_LEN : undefined;
-  return { kind: 'correct', save, ...(stageCleared ? { stageCleared } : {}) };
+  return { kind: 'correct', save, earned, ...(stageCleared ? { stageCleared } : {}) };
 }
 
 /** Leaves the current run. In a run it counts as finished with the current score. */
