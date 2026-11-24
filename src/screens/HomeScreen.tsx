@@ -6,7 +6,6 @@ import { IconArrow, IconClock, IconInfinity, IconMap } from '../components/Icons
 import { LevelBars } from '../components/LevelBars';
 import { Logo } from '../components/Logo';
 import { Chip } from '../components/Chip';
-import { coreLevel } from '../engine/core';
 
 interface Props {
   save: SaveData;
@@ -36,7 +35,7 @@ export function HomeScreen({ save, mode, play, onMode, onPlay, onStart, onCore }
     <div className="screen-inner home">
       <header className="home-top reveal" style={{ ['--d' as string]: '0ms' }}>
         <span className="eyebrow">Lógica · <span className="home-count tnum">{TOTAL_QUESTIONS.toLocaleString('es-ES')} preguntas</span></span>
-        <button type="button" className="core-btn" onClick={onCore} aria-label={`Abrir tu Núcleo, nivel ${coreLevel(save.core)}`}>
+        <button type="button" className="core-btn" onClick={onCore} aria-label={`Abrir tu Núcleo, chip nivel ${save.core.chip}`}>
           <Chip core={save.core} className="core-btn-chip" />
           <span className="display tnum">⚡ {save.core.energy.toLocaleString('es-ES')}</span>
         </button>
