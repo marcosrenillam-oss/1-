@@ -69,9 +69,12 @@ export interface InvasionRecord {
   bestKills: number;
   totalKills: number;
   bosses: number;
+  /** Laboratorio currency and upgrade levels. */
+  datos: number;
+  lab: Record<string, number>;
   run: InvasionSnapshot | null;
 }
-export const emptyInvasion = (): InvasionRecord => ({ played: 0, bestWave: 0, bestKills: 0, totalKills: 0, bosses: 0, run: null });
+export const emptyInvasion = (): InvasionRecord => ({ played: 0, bestWave: 0, bestKills: 0, totalKills: 0, bosses: 0, datos: 0, lab: {}, run: null });
 
 export interface SaveData {
   version: 2;
@@ -187,6 +190,8 @@ export function normalize(raw: unknown): SaveData {
     bestKills: num(inv.bestKills),
     totalKills: num(inv.totalKills),
     bosses: num(inv.bosses),
+    datos: num(inv.datos),
+    lab: Object.fromEntries(Object.entries(obj(inv.lab)).filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v >= 0).map(([k, v]) => [k, Math.floor(v as number)])),
     run: typeof snap.wave === 'number' && Array.isArray(snap.defenders) && snap.defenders.length > 0 && snap.g && typeof snap.hp === 'number' ? (snap as unknown as InvasionSnapshot) : null,
   };
   base.adventure = {

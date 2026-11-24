@@ -9,6 +9,7 @@ import './styles/game.css';
 import './styles/result.css';
 import './styles/invasion.css';
 import './styles/fit.css';
+import './styles/landscape.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

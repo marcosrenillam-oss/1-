@@ -21,7 +21,7 @@ export default defineConfig({
         start_url: './',
         scope: './',
         display: 'standalone',
-        orientation: 'portrait',
+        orientation: 'any',
         background_color: CARBON,
         theme_color: CARBON,
         categories: ['games', 'education'],

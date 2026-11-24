@@ -1,6 +1,8 @@
 /** «Invasión»: endless defence of the chip's core against viruses. */
 
-export type DefKind = 'canon' | 'laser' | 'rayo' | 'pulso' | 'misil' | 'hielo' | 'cuchillas' | 'mortero';
+export type DefKind =
+  | 'canon' | 'laser' | 'rayo' | 'pulso' | 'misil' | 'hielo' | 'cuchillas' | 'mortero'
+  | 'francotirador' | 'llamas' | 'gravedad' | 'drones' | 'acido' | 'bumeran' | 'minas' | 'cronos';
 
 export interface Stats {
   dmg: number;
@@ -51,6 +53,10 @@ export interface Defender {
   lockT: number;
   spin: number;
   pending: number;
+  /** Legendary fusion: a second defender living in the same body. */
+  fuse?: { kind: DefKind; stats: Stats; flags: Record<string, number>; evo: string[]; cd: number; spin: number; pending: number; lockId: number; lockT: number; aim: number };
+  /** Drones of a drone bay. */
+  drones?: { x: number; y: number; cd: number; a: number }[];
 }
 
 export type VirusType =
@@ -108,6 +114,14 @@ export interface Shot {
   target: number;
   src: number;
   kind: DefKind | 'core' | 'frag';
+  /** Boomerang: comes back to its thrower. */
+  ret?: number;
+  /** Frozen viruses take +50 %. */
+  brittle?: boolean;
+  /** Ignores armour. */
+  pa?: boolean;
+  /** Acid shell: leaves a puddle. */
+  acid?: boolean;
   hit: number[];
   /** Mortar shells: landing point and flight time. */
   tx?: number;
@@ -126,6 +140,24 @@ export type Fx =
   | { k: 'txt'; x: number; y: number; s: string; life: number; max: number; c: string }
   | { k: 'xp'; x: number; y: number; life: number; max: number; c: string };
 
+/** Ground effects: acid puddles, gravity wells, mines. */
+export interface Zone {
+  k: 'acid' | 'well' | 'mine';
+  x: number;
+  y: number;
+  r: number;
+  t: number;
+  max: number;
+  dps: number;
+  slow: number;
+  pull: number;
+  burn: number;
+  dmg: number;
+  split: number;
+  src: number;
+  flags: Record<string, number>;
+}
+
 export interface Globals {
   dmgMul: number;
   rateMul: number;
@@ -140,9 +172,20 @@ export interface Globals {
   shieldT: number;
   aura: number;
   brake: number;
-  tapMul: number;
-  tapRadius: number;
-  tapRate: number;
+  /** Core structures (visible upgrades around the defence). */
+  wall: number;
+  wallMax: number;
+  thorns: number;
+  orbit: number;
+  orbitA: number;
+  faro: number;
+  faroA: number;
+  coreMines: number;
+  coreMinesT: number;
+  arc: number;
+  arcT: number;
+  corePulse: number;
+  corePulseT: number;
   nova: number;
   novaT: number;
   rerolls: number;
@@ -192,7 +235,11 @@ export interface Game {
   bosses: number;
   taken: string[];
   ring: number;
-  tapCd: number;
+  zones: Zone[];
+  /** Active synergies between defenders. */
+  syn: string[];
+  /** Defender types that can appear (Laboratorio unlocks). */
+  unlocked: DefKind[];
   shake: number;
   hurt: number;
   over: boolean;

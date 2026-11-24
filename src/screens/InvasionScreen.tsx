@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CATALOGUE_SIZE, choose, MAX_DEFENDERS, offer, type Card } from '../invasion/cards';
-import { DEF_INFO, defenderName } from '../invasion/defenders';
+import { CATALOGUE_SIZE, choose, MAX_DEFENDERS, offer, RARITY_LABEL, type Card } from '../invasion/cards';
+import { LAB, labCost, labLevel, startOpts } from '../invasion/lab';
+import { DEF_INFO, defenderName, SYNERGIES } from '../invasion/defenders';
 import type { InvasionResult } from '../invasion/record';
 import { draw, drawBackground, type View } from '../invasion/render';
-import { BOSS_NAMES, energyFor, newGame, rand, restore, snapshot, tap, update, xpNeed, type InvasionSnapshot } from '../invasion/sim';
+import { BOSS_NAMES, datosFor, energyFor, newGame, rand, restore, snapshot, update, xpNeed, type InvasionSnapshot } from '../invasion/sim';
 import type { Game } from '../invasion/types';
 import type { InvasionRecord } from '../storage/persistence';
 import { IconBack } from '../components/Icons';
@@ -15,10 +16,11 @@ interface Props {
   color: string;
   onSnapshot: (s: InvasionSnapshot) => void;
   onFinish: (g: Game) => InvasionResult;
+  onBuyLab: (id: string) => boolean;
   onHome: () => void;
 }
 
-type Phase = 'intro' | 'play' | 'over';
+type Phase = 'intro' | 'lab' | 'play' | 'over';
 interface Hud {
   wave: number;
   hp: number;
@@ -28,7 +30,6 @@ interface Hud {
   need: number;
   kills: number;
   threat: number;
-  tap: number;
   defenders: number;
 }
 
@@ -37,7 +38,7 @@ const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60
 /** World units across the short side of the screen. */
 const WORLD = 360;
 
-export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: Props) {
+export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, onHome }: Props) {
   const [phase, setPhase] = useState<Phase>('intro');
   const [hud, setHud] = useState<Hud | null>(null);
   const [cards, setCards] = useState<Card[] | null>(null);
@@ -52,6 +53,9 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
   const pausedRef = useRef(false);
   const cardsRef = useRef<Card[] | null>(null);
   const finished = useRef(false);
+  const seenFusions = useRef(new Set<number>());
+  const labRef = useRef(record.lab);
+  labRef.current = record.lab;
   const snapRef = useRef(onSnapshot);
   const finishRef = useRef(onFinish);
   snapRef.current = onSnapshot;
@@ -65,7 +69,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
     const v = view.current;
     const ax = v.w / 2 / v.scale;
     const ay = v.h / 2 / v.scale;
-    game.current = from ? restore(from, ax, ay) : newGame(undefined, ax, ay);
+    game.current = from ? restore(from, ax, ay) : newGame(undefined, ax, ay, startOpts(labRef.current));
     finished.current = false;
     setResult(null);
     setCards(null);
@@ -158,6 +162,17 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
           showBanner('Jefe eliminado', undefined, true);
         } else if (e === 'backup') showBanner('Copia de seguridad', 'El núcleo se ha restaurado');
         else if (e === 'evo') haptic('success');
+        else if (e === 'fusion') {
+          haptic('heavy');
+          showBanner('¡Fusión legendaria!', defenderName(g.defenders.find((d) => d.fuse && !seenFusions.current.has(d.id)) ?? g.defenders[0]));
+          g.defenders.forEach((d) => d.fuse && seenFusions.current.add(d.id));
+        } else if (e === 'wallbreak') {
+          haptic('error');
+          showBanner('¡Muro roto!', 'Se reconstruye en la próxima oleada', true);
+        } else if (e.startsWith('syn:')) {
+          const sy = SYNERGIES.find((x) => x.id === e.slice(4));
+          if (sy) showBanner(`Sinergia: ${sy.name}`, sy.desc);
+        }
       }
       g.events.length = 0;
       if (running && g.pending > 0 && !g.over) {
@@ -179,7 +194,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
       hudT -= dt;
       if (hudT <= 0) {
         hudT = 0.1;
-        setHud({ wave: g.wave, hp: g.hp, max: g.maxHp, level: g.level, xp: g.xp, need: xpNeed(g.level), kills: g.kills, threat: g.g.enemyHp, tap: g.tapCd, defenders: g.defenders.length });
+        setHud({ wave: g.wave, hp: g.hp, max: g.maxHp, level: g.level, xp: g.xp, need: xpNeed(g.level), kills: g.kills, threat: g.g.enemyHp, defenders: g.defenders.length });
       }
     };
     raf = requestAnimationFrame(loop);
@@ -195,14 +210,6 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
       if (g && ctx && bg.current) draw(ctx, g, view.current, bg.current, c!.width / view.current.w);
     }
   }, [phase]);
-
-  const onPointer = (e: React.PointerEvent) => {
-    const g = game.current;
-    if (!g || paused || cards || phase !== 'play') return;
-    const r = e.currentTarget.getBoundingClientRect();
-    const v = view.current;
-    if (tap(g, (e.clientX - r.left - v.w / 2) / v.scale, (e.clientY - r.top - v.h / 2) / v.scale)) haptic('tap');
-  };
 
   const pick = (c: Card) => {
     const g = game.current;
@@ -239,7 +246,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
 
   return (
     <div className="inv" ref={wrap}>
-      <canvas ref={canvas} className="inv-canvas" onPointerDown={onPointer} aria-label="Tablero de la invasión" />
+      <canvas ref={canvas} className="inv-canvas" aria-label="Tablero de la invasión" />
 
       {phase === 'intro' && (
         <div className="inv-intro">
@@ -253,7 +260,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
             <ul className="inv-rules">
               <li>Cada nivel eliges una mejora entre {CATALOGUE_SIZE} tipos distintos.</li>
               <li>Cada defensor evoluciona dos veces: tú eliges el camino.</li>
-              <li>Toca la pantalla para lanzar descargas.</li>
+              <li>Combina defensores para activar sinergias y fusiona dos al máximo en uno legendario.</li>
               <li>Cuanto más fuerte eres, más fuertes vienen ellos.</li>
             </ul>
             {record.bestWave > 0 && (
@@ -263,6 +270,10 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
             )}
           </div>
           <div className="inv-intro-cta">
+            <button type="button" className="inv-lab-btn" onClick={() => setPhase('lab')}>
+              <span className="display">Laboratorio</span>
+              <span className="tnum">◆ {fmt(record.datos)}</span>
+            </button>
             {record.run ? (
               <>
                 <button type="button" className="btn btn-primary btn-xl" onClick={() => start(record.run)}>
@@ -277,6 +288,57 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
                 Defender el núcleo
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {phase === 'lab' && (
+        <div className="inv-intro inv-lab">
+          <header className="map-top">
+            <button type="button" className="icon-btn" aria-label="Volver" onClick={() => setPhase('intro')}>
+              <IconBack />
+            </button>
+            <div className="map-title">
+              <span className="eyebrow">Mejoras permanentes</span>
+              <span className="map-name display">Laboratorio</span>
+            </div>
+            <span className="energy-pill energy-pill--datos display tnum">◆ {fmt(record.datos)}</span>
+          </header>
+          <div className="inv-lab-scroll">
+            <p className="inv-lab-hint">Ganas datos ◆ en cada invasión: más cuanto más lejos llegues y más jefes derrotes.</p>
+            {(['unlock', 'boost'] as const).map((grp) => (
+              <section key={grp}>
+                <p className="eyebrow inv-lab-group">{grp === 'unlock' ? 'Nuevos defensores' : 'Mejoras para cada partida'}</p>
+                <div className="inv-lab-grid">
+                  {LAB.filter((it) => it.group === grp).map((it) => {
+                    const lvl = labLevel(record.lab, it.id);
+                    const cost = labCost(record.lab, it.id);
+                    const done = cost === null;
+                    return (
+                      <button
+                        key={it.id}
+                        type="button"
+                        className={`inv-lab-item${done ? ' is-done' : ''}`}
+                        style={{ ['--c' as string]: it.color ?? 'var(--lime)' }}
+                        disabled={done || record.datos < (cost ?? 0)}
+                        onClick={() => haptic(onBuyLab(it.id) ? 'success' : 'error')}
+                      >
+                        <span className="inv-lab-name">{it.name}</span>
+                        <span className="inv-lab-desc">{it.desc}</span>
+                        <span className="inv-lab-foot tnum">
+                          {it.max > 1 && (
+                            <span className="inv-lab-pips" aria-label={`Nivel ${lvl} de ${it.max}`}>
+                              {Array.from({ length: it.max }, (_, k) => <i key={k} className={k < lvl ? 'is-on' : ''} />)}
+                            </span>
+                          )}
+                          <b>{done ? (it.group === 'unlock' ? 'Desbloqueado' : 'Máximo') : `◆ ${fmt(cost!)}`}</b>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         </div>
       )}
@@ -311,8 +373,6 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
               </div>
             </div>
           </div>
-          {hud.wave <= 1 && <p className="inv-hint">Toca la pantalla para lanzar descargas</p>}
-          <div className={`inv-tap${hud.tap > 0 ? '' : ' is-ready'}`} aria-hidden="true" />
           {banner && (
             <div className={`inv-banner${banner.boss ? ' inv-banner--boss' : ''}`} key={banner.key} onAnimationEnd={() => setBanner(null)}>
               <span className="display">{banner.text}</span>
@@ -329,8 +389,11 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
             <p className="inv-sheet-title display">{evoCards ? 'Elige un camino' : 'Elige una mejora'}</p>
             <div className={`inv-cards${evoCards ? ' inv-cards--evo' : ''}`}>
               {cards.map((c, i) => (
-                <button key={c.key} type="button" className={`inv-card inv-card--${c.kind}`} style={{ ['--c' as string]: c.color, ['--i' as string]: i }} onClick={() => pick(c)}>
-                  <span className="inv-card-tag">{c.tag}</span>
+                <button key={c.key} type="button" className={`inv-card inv-card--${c.kind} inv-card--${c.rarity}`} style={{ ['--c' as string]: c.color, ['--c2' as string]: c.color2 ?? c.color, ['--i' as string]: i }} onClick={() => pick(c)}>
+                  <span className="inv-card-top">
+                    <span className="inv-card-tag">{c.tag}</span>
+                    <span className="inv-card-rarity">{RARITY_LABEL[c.rarity]}</span>
+                  </span>
                   <span className="inv-card-title display">{c.title}</span>
                   <span className="inv-card-desc">{c.desc}</span>
                 </button>
@@ -357,7 +420,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
             <p className="inv-sheet-title display">Tu defensa</p>
             <ul className="inv-build">
               {g.defenders.map((d) => (
-                <li key={d.id} style={{ ['--c' as string]: DEF_INFO[d.kind].color }}>
+                <li key={d.id} style={{ ['--c' as string]: DEF_INFO[d.kind].color, ['--c2' as string]: d.fuse ? DEF_INFO[d.fuse.kind].color : DEF_INFO[d.kind].color }} className={d.fuse ? 'is-fused' : ''}>
                   <span className="inv-build-dot" />
                   <span className="inv-build-name">{defenderName(d)}</span>
                   <span className="inv-build-meta tnum">
@@ -366,8 +429,20 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
                 </li>
               ))}
             </ul>
+            {g.syn.length > 0 && (
+              <ul className="inv-syn">
+                {g.syn.map((id) => {
+                  const sy = SYNERGIES.find((x) => x.id === id)!;
+                  return (
+                    <li key={id} style={{ ['--c' as string]: DEF_INFO[sy.a].color, ['--c2' as string]: DEF_INFO[sy.b].color }}>
+                      <b>{sy.name}</b> {sy.desc}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
             <p className="inv-build-sum tnum">
-              {g.taken.length} mejoras · {new Set(g.taken).size} distintas de {CATALOGUE_SIZE} · ⚡ {fmt(energyFor(g))} si terminas ahora
+              {g.taken.length} mejoras · {new Set(g.taken).size} distintas de {CATALOGUE_SIZE} · ⚡ {fmt(energyFor(g))} y ◆ {fmt(datosFor(g))} si terminas ahora
             </p>
             <div className="inv-pause-cta">
               <button type="button" className="btn btn-primary btn-lg" onClick={() => setPaused(false)}>
@@ -401,7 +476,10 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onHome }: 
                 <span>tiempo</span>
               </div>
             </div>
-            {result.energy > 0 && <span className="energy-pill display tnum inv-over-energy">+{fmt(result.energy)} ⚡ para tu Núcleo</span>}
+            <div className="inv-over-loot">
+              {result.energy > 0 && <span className="energy-pill display tnum">+{fmt(result.energy)} ⚡ Núcleo</span>}
+              {result.datos > 0 && <span className="energy-pill energy-pill--datos display tnum">+{fmt(result.datos)} ◆ Laboratorio</span>}
+            </div>
             <div className="inv-pause-cta">
               <button type="button" className="btn btn-primary btn-xl" onClick={() => start(null)}>
                 Otra vez

@@ -368,6 +368,29 @@ await settle(1400);
 await shot('18-home-se');
 await noHorizontalOverflow('home SE');
 
+// ── 9. Landscape ─────────────────────────────────────────────────────────
+await page.setViewportSize({ width: 852, height: 393 });
+await settle(800);
+await shot('19-home-landscape');
+await noHorizontalOverflow('home landscape');
+{
+  const [hero, tree] = await page.evaluate(() => ['.hub-hero', '.hub-tree'].map((s) => document.querySelector(s).getBoundingClientRect().toJSON()));
+  check(tree.left >= hero.right - 1 && tree.width > 300, 'landscape: home uses two columns over the full width');
+}
+await page.getByRole('button', { name: /^Invasión/ }).click();
+await settle(900);
+await page.getByRole('button', { name: /Laboratorio/ }).click();
+await settle(700);
+check(await page.locator('.inv-lab-item').count() >= 15, 'invasion: Laboratorio lists permanent upgrades');
+await shot('20-lab-landscape');
+await noHorizontalOverflow('lab landscape');
+await page.getByRole('button', { name: 'Volver' }).click();
+await settle(400);
+await page.getByRole('button', { name: 'Inicio' }).click();
+await settle(900);
+await page.setViewportSize({ width: 393, height: 852 });
+await settle(600);
+
 check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 await browser.close();
 stopServer();

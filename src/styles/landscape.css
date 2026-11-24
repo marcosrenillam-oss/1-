@@ -1,0 +1,270 @@
+/* ── Orientation ─────────────────────────────────────────────────────────
+   Portrait: one column that fills the phone. Landscape (phones on their side,
+   tablets): every screen spreads over the full width in two columns, so no
+   empty bands are left at the sides and nothing needs scrolling. */
+
+/* Bigger portrait screens (tablets) use more of the width. */
+@media (orientation: portrait) and (min-width: 600px) {
+  .screen-inner {
+    max-width: 640px;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 600px) {
+  .screen {
+    padding-top: calc(var(--sat) + 10px);
+    padding-bottom: calc(var(--sab) + 10px);
+  }
+  .screen-inner {
+    max-width: 1100px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    column-gap: clamp(24px, 4vw, 56px);
+    align-content: start;
+  }
+
+  /* Home: the 1% on the left, its three branches on the right */
+  .hub {
+    grid-template-rows: auto 1fr;
+    align-items: center;
+  }
+  .hub .home-top {
+    grid-column: 1 / -1;
+  }
+  .hub-hero {
+    grid-column: 1;
+    padding: 0;
+    align-self: center;
+  }
+  .hub-hero .logo {
+    font-size: clamp(84px, 26vh, 150px) !important;
+  }
+  .hub-tree {
+    grid-column: 2;
+    padding: 6px 0;
+    align-self: center;
+  }
+  .hub-list {
+    gap: 10px;
+  }
+  .hub-card {
+    padding: 10px 12px 10px 10px;
+  }
+  .hub-art {
+    width: 50px;
+    height: 50px;
+  }
+
+  /* Preguntas: options left, record and start right */
+  .qs .home-controls,
+  .qs .home-play {
+    display: contents;
+  }
+  .qs > .map-top {
+    grid-column: 1 / -1;
+  }
+  .qs-tagline {
+    grid-column: 1;
+    margin: 8px 0 10px;
+  }
+  .qs .home-controls > .reveal:first-child {
+    grid-column: 1;
+  }
+  .qs .home-play > div:first-child:not(:only-child) {
+    grid-column: 1;
+    margin-top: 14px;
+  }
+  .qs .home-play > div:last-child {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    align-self: start;
+    margin-top: 8px;
+  }
+  .qs .home-cta {
+    grid-column: 2;
+    grid-row: 4;
+    align-self: end;
+    margin-top: 12px;
+  }
+  .qs .stat-grid {
+    margin-top: 8px;
+  }
+  .qs .record-value {
+    font-size: 48px;
+  }
+
+  /* Question: counter and progress left, question and answers right */
+  .game {
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+    grid-template-rows: repeat(5, auto) 1fr auto;
+    grid-auto-flow: row dense;
+    min-height: 100%;
+  }
+  .game > * {
+    grid-column: 1;
+  }
+  .game > .qwrap {
+    grid-column: 2;
+    grid-row: 1 / 7;
+    margin-top: 0;
+  }
+  .game > .game-actions {
+    grid-column: 2;
+    grid-row: 7;
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+  .game .game-counter {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .game .counter-now {
+    font-size: clamp(40px, 15vh, 68px);
+  }
+  .game .prompt {
+    font-size: clamp(18px, 5.4vh, 26px);
+  }
+
+  /* Result and victory: score left, details and buttons right */
+  .result,
+  .victory {
+    grid-auto-flow: row dense;
+    row-gap: 12px;
+    align-items: start;
+  }
+  .result > *,
+  .victory > * {
+    grid-column: 1;
+  }
+  .result > .mini-stats,
+  .result > .review,
+  .result > .result-actions,
+  .victory > .mini-stats,
+  .victory > .result-actions,
+  .victory > .victory-copy {
+    grid-column: 2;
+  }
+  .result-num {
+    font-size: clamp(72px, 30vh, 120px);
+  }
+  .victory-num {
+    font-size: clamp(80px, 34vh, 140px);
+  }
+
+  /* Adventure map: world info left, the path right */
+  .map {
+    grid-auto-flow: row dense;
+    align-items: start;
+  }
+  .map > * {
+    grid-column: 1;
+  }
+  .map > .map-path {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+    margin-top: 0;
+  }
+  .map > .map-cta {
+    position: static;
+    margin-top: 12px;
+  }
+
+  /* Tu Núcleo: the chip left, the workshop right */
+  .core {
+    grid-auto-flow: row dense;
+    align-items: start;
+  }
+  .core > * {
+    grid-column: 2;
+  }
+  .core > .map-top {
+    grid-column: 1 / -1;
+  }
+  .core > .core-stage {
+    grid-column: 1;
+    grid-row: 2 / span 8;
+    align-self: start;
+    position: sticky;
+    top: 0;
+  }
+  .core > .core-sub {
+    text-align: left;
+    margin-top: 4px;
+  }
+  .core-stage .chip {
+    width: min(100%, 72vh);
+  }
+  .core-tabs {
+    margin-top: 6px;
+  }
+
+  /* Invasión */
+  .inv-intro {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    column-gap: 40px;
+    padding-left: max(24px, var(--sal));
+    padding-right: max(24px, var(--sar));
+  }
+  .inv-back {
+    grid-column: 1 / -1;
+  }
+  .inv-intro-body {
+    gap: 8px;
+  }
+  .inv-title {
+    font-size: clamp(40px, 14vh, 64px);
+  }
+  .inv-intro-cta {
+    align-self: end;
+  }
+  .inv-lab {
+    display: flex;
+  }
+  .inv-sheet {
+    align-items: center;
+    padding-top: calc(var(--sat) + 10px);
+    padding-bottom: calc(var(--sab) + 10px);
+  }
+  .inv-sheet-card {
+    width: min(100%, 860px);
+  }
+  .inv-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  }
+  .inv-build {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  }
+  .inv-pause-cta {
+    flex-direction: row;
+  }
+  .inv-banner {
+    top: 22%;
+  }
+  .inv-bars {
+    max-width: 640px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+/* Very short landscape phones: tighter type */
+@media (orientation: landscape) and (max-height: 430px) {
+  .hub .home-tagline {
+    margin-top: 8px;
+    font-size: 17px;
+  }
+  .hub-title {
+    font-size: 18px;
+  }
+  .hub-sub {
+    font-size: 12px;
+  }
+  .modal-card,
+  .stage-clear-body {
+    max-width: 640px;
+  }
+}

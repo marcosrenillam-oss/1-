@@ -7,7 +7,7 @@ import { GameScreen } from './screens/GameScreen';
 import { HomeScreen, type HubTarget } from './screens/HomeScreen';
 import { QuestionsScreen } from './screens/QuestionsScreen';
 import { InvasionScreen } from './screens/InvasionScreen';
-import { finishInvasion } from './invasion/record';
+import { buyLab, finishInvasion } from './invasion/record';
 import type { InvasionSnapshot } from './invasion/sim';
 import type { Game } from './invasion/types';
 import { COLORS } from './engine/core';
@@ -87,6 +87,12 @@ export default function App() {
     const out = finishInvasion(saveRef.current, g);
     commit(out.save);
     return out.result;
+  }, [commit]);
+
+  const invasionLab = useCallback((id: string) => {
+    const next = buyLab(saveRef.current, id);
+    if (next) commit(next);
+    return !!next;
   }, [commit]);
 
   const startGame = useCallback((m: GameMode, p: Play) => {
@@ -170,6 +176,7 @@ export default function App() {
         color={COLORS.find((c) => c.id === save.core.color)?.hex ?? '#c8ff2e'}
         onSnapshot={invasionSnapshot}
         onFinish={invasionFinish}
+        onBuyLab={invasionLab}
         onHome={() => go({ name: 'home' })}
       />
     );

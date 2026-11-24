@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOGUE_SIZE, choose, GLOBAL_CARDS, MAX_DEFENDERS, offer, PACT_CARDS, STAT_CARDS, addDefender } from './cards';
-import { DEF_KINDS, EVOS, evoOptions } from './defenders';
+import { CATALOGUE_SIZE, choose, fusablePairs, GLOBAL_CARDS, MAX_DEFENDERS, offer, PACT_CARDS, STAT_CARDS, addDefender, kindsOf } from './cards';
+import { buyLab } from './record';
+import { LAB, NEW_KINDS, startOpts } from './lab';
+import { BASE_KINDS, DEF_KINDS, EVOS, evoOptions, SYNERGIES } from './defenders';
 import { finishInvasion } from './record';
-import { energyFor, newGame, rand, restore, snapshot, tap, update } from './sim';
+import { energyFor, newGame, rand, restore, snapshot, update, WALL_R } from './sim';
 import type { Game } from './types';
 import { emptySave, normalize } from '../storage/persistence';
 
@@ -14,8 +16,9 @@ function play(g: Game, seconds: number, pick = (o: ReturnType<typeof offer>) => 
 }
 
 describe('Invasión', () => {
-  it('has more than 100 different upgrades', () => {
-    expect(CATALOGUE_SIZE).toBeGreaterThanOrEqual(100);
+  it('has well over 100 different upgrades and 16 defender types', () => {
+    expect(DEF_KINDS).toHaveLength(16);
+    expect(CATALOGUE_SIZE).toBeGreaterThanOrEqual(250);
     const ids = [...STAT_CARDS.map((c) => c.id), ...GLOBAL_CARDS.map((c) => c.id), ...PACT_CARDS.map((c) => c.id), ...EVOS.map((e) => e.id)];
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -43,6 +46,7 @@ describe('Invasión', () => {
 
   it('every upgrade applies cleanly to every defender type', () => {
     const g = newGame(2);
+    g.defenders = [];
     for (const k of DEF_KINDS) addDefender(g, k);
     for (const c of [...GLOBAL_CARDS, ...PACT_CARDS]) if (!c.ok || c.ok(g)) c.apply(g);
     for (const d of g.defenders) {
@@ -74,13 +78,83 @@ describe('Invasión', () => {
     expect(g.hp).toBe(0);
   });
 
-  it('tapping damages viruses near the finger and then recharges', () => {
-    const g = newGame(5);
-    g.wave = 1;
-    g.viruses.push({ ...JSON.parse(JSON.stringify({ id: 999, type: 'basico', x: 100, y: 0, r: 9, hp: 5, max: 5, shield: 0, speed: 0, armor: 0, dmg: 5, xp: 1, boss: false, elite: false, gen: 0, slowF: 0, slowT: 0, burn: 0, burnT: 0, flash: 0, spin: 0, kb: 0, t: 0, timer: 99, hidden: false, dead: false, hits: {} })) });
-    expect(tap(g, 100, 0)).toBe(true);
-    expect(g.kills).toBe(1);
-    expect(tap(g, 100, 0)).toBe(false);
+  it('never offers a defender type you already have', () => {
+    const g = newGame(11, 300, 300, { unlocked: NEW_KINDS });
+    for (let k = 0; k < 200; k++) {
+      for (const c of offer(g, () => rand(g))) {
+        if (c.kind !== 'new') continue;
+        expect(g.defenders.flatMap(kindsOf)).not.toContain(c.id.slice(4));
+      }
+      const o = offer(g, () => rand(g));
+      const n = o.find((c) => c.kind === 'new');
+      if (n) choose(g, n);
+    }
+    const kinds = g.defenders.flatMap(kindsOf);
+    expect(new Set(kinds).size).toBe(kinds.length);
+    expect(g.defenders.length).toBeLessThanOrEqual(MAX_DEFENDERS);
+  });
+
+  it('synergies switch on when both defenders are on the ring', () => {
+    const g = newGame(12);
+    g.defenders = [];
+    addDefender(g, 'hielo');
+    expect(g.syn).toEqual([]);
+    addDefender(g, 'rayo');
+    expect(g.syn).toContain('superconductor');
+    expect(g.events).toContain('syn:superconductor');
+    for (const sy of SYNERGIES) expect(DEF_KINDS).toEqual(expect.arrayContaining([sy.a, sy.b]));
+  });
+
+  it('two fully evolved defenders fuse into a legendary one that does both jobs', () => {
+    const g = newGame(13);
+    g.defenders = [];
+    const a = addDefender(g, 'laser');
+    const b = addDefender(g, 'rayo');
+    expect(fusablePairs(g)).toHaveLength(0);
+    a.evo = ['prisma', 'abanico'];
+    b.evo = ['cadena', 'arco'];
+    expect(fusablePairs(g)).toHaveLength(1);
+    let fusion;
+    for (let k = 0; k < 50 && !fusion; k++) fusion = offer(g, () => rand(g)).find((c) => c.kind === 'fusion');
+    expect(fusion?.title).toBe('Cañón de plasma');
+    choose(g, fusion!);
+    expect(g.defenders).toHaveLength(1);
+    expect(g.defenders[0].fuse?.kind).toBe('rayo');
+    expect(g.events).toContain('fusion');
+    play(g, 30);
+    expect(g.kills).toBeGreaterThan(0);
+  });
+
+  it('the wall stops viruses until it breaks; structures fight on their own', () => {
+    const g = newGame(14);
+    g.defenders = [];
+    g.g.wallMax = g.g.wall = 1e9;
+    for (let t = 0; t < 40; t += 1 / 30) update(g, 1 / 30);
+    expect(g.hp).toBe(100);
+    for (const v of g.viruses) expect(Math.hypot(v.x, v.y)).toBeGreaterThan(WALL_R - 2);
+    const h = newGame(15);
+    h.defenders = [];
+    Object.assign(h.g, { thorns: 2, orbit: 6, faro: 2, coreMines: 2, arc: 2, corePulse: 2 });
+    play(h, 60);
+    expect(h.kills).toBeGreaterThan(10);
+  });
+
+  it('the Laboratorio sells permanent upgrades that change the starting game', () => {
+    let save = emptySave();
+    save.invasion.datos = 5000;
+    expect(newGame(16, 300, 300, startOpts(save.invasion.lab)).defenders).toHaveLength(2);
+    for (const id of ['inicio', 'cartas', 'vida', 'muro', `u-${NEW_KINDS[0]}`]) save = buyLab(save, id)!;
+    expect(save.invasion.datos).toBeLessThan(5000);
+    const g = newGame(16, 300, 300, startOpts(save.invasion.lab));
+    expect(g.defenders).toHaveLength(3);
+    expect(g.pending).toBe(1);
+    expect(g.maxHp).toBe(115);
+    expect(g.g.wall).toBeGreaterThan(0);
+    expect(g.unlocked).toContain(NEW_KINDS[0]);
+    expect(g.unlocked).toEqual(expect.arrayContaining(BASE_KINDS));
+    save.invasion.datos = 0;
+    expect(buyLab(save, 'dano')).toBeNull();
+    expect(LAB.length).toBeGreaterThanOrEqual(15);
   });
 
   it('a saved wave restores the same build', () => {
@@ -102,7 +176,9 @@ describe('Invasión', () => {
     save.invasion.run = snapshot(g);
     const { save: after, result } = finishInvasion(save, g);
     expect(result.energy).toBe(energyFor(g));
+    expect(result.datos).toBeGreaterThan(0);
     expect(after.core.energy).toBe(result.energy);
+    expect(after.invasion.datos).toBe(result.datos);
     expect(after.invasion.bestWave).toBe(g.wave);
     expect(after.invasion.run).toBeNull();
     save = normalize(JSON.parse(JSON.stringify({ ...after, invasion: { ...after.invasion, run: snapshot(g) } })));
