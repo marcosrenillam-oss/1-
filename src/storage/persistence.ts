@@ -1,6 +1,7 @@
 import { MODES, type GameMode } from '../engine/difficulty';
 import type { SeenInfo } from '../engine/selector';
 import { emptyCore, normalizeCore, type CoreState } from '../engine/core';
+import type { InvasionSnapshot } from '../invasion/sim';
 
 export type Play = 'classic' | 'crono' | 'adventure';
 
@@ -61,6 +62,17 @@ export interface AdventureState {
   failed: number;
 }
 
+/** «Invasión» records and the game in progress (saved at the start of each wave). */
+export interface InvasionRecord {
+  played: number;
+  bestWave: number;
+  bestKills: number;
+  totalKills: number;
+  bosses: number;
+  run: InvasionSnapshot | null;
+}
+export const emptyInvasion = (): InvasionRecord => ({ played: 0, bestWave: 0, bestKills: 0, totalKills: 0, bosses: 0, run: null });
+
 export interface SaveData {
   version: 2;
   lastMode: GameMode;
@@ -70,6 +82,7 @@ export interface SaveData {
   adventure: AdventureState;
   /** «Tu Núcleo»: cosmetic chip built with energy. */
   core: CoreState;
+  invasion: InvasionRecord;
   run: ActiveRun | null;
 }
 
@@ -90,6 +103,7 @@ export function emptySave(): SaveData {
     },
     adventure: emptyAdventure(),
     core: emptyCore(),
+    invasion: emptyInvasion(),
     run: null,
   };
 }
@@ -165,6 +179,16 @@ export function normalize(raw: unknown): SaveData {
   }
   const a = obj(r.adventure);
   base.core = normalizeCore(r.core);
+  const inv = obj(r.invasion);
+  const snap = obj(inv.run);
+  base.invasion = {
+    played: num(inv.played),
+    bestWave: num(inv.bestWave),
+    bestKills: num(inv.bestKills),
+    totalKills: num(inv.totalKills),
+    bosses: num(inv.bosses),
+    run: typeof snap.wave === 'number' && Array.isArray(snap.defenders) && snap.defenders.length > 0 && snap.g && typeof snap.hp === 'number' ? (snap as unknown as InvasionSnapshot) : null,
+  };
   base.adventure = {
     world: Math.min(4, num(a.world)),
     level: Math.max(1, Math.min(101, num(a.level) || 1)),

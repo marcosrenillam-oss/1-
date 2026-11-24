@@ -118,7 +118,14 @@ await page.evaluate(() => navigator.serviceWorker.ready);
 await page.reload();
 await settle(900);
 check(await page.evaluate(() => !!navigator.serviceWorker.controller), 'service worker controls the page');
-check((await page.getByRole('radio').allTextContents()).join('|').includes('Aventura'), 'three play types and two modes');
+for (const b of [/^Preguntas/, /^Invasión/, /^Tu Núcleo/]) check(await page.getByRole('button', { name: b }).isVisible(), `home branch ${b}`);
+await page.getByRole('button', { name: /^Preguntas/ }).click();
+await settle(900);
+await shot('01b-preguntas');
+{
+  const radios = (await page.getByRole('radio').allTextContents()).join('|');
+  check(radios.includes('Clásico') && radios.includes('Aventura') && !radios.includes('Contrarreloj'), `Preguntas: Clásico and Aventura, no Contrarreloj (${radios})`);
+}
 
 // ── 2. Classic run: phase 1 → colour change → loss after victory ─────────
 await page.getByRole('radio', { name: 'Normal' }).click();
@@ -205,32 +212,51 @@ check((await page.locator('.victory-title').textContent()) === 'Cien de cien', '
 await page.getByRole('button', { name: 'Inicio' }).click();
 await settle(1000);
 
-// ── 5. Contrarreloj ──────────────────────────────────────────────────────
-await page.getByRole('radio', { name: 'Contrarreloj' }).click();
-await page.getByRole('radio', { name: 'Difícil' }).click();
-await settle(400);
-await page.getByRole('button', { name: 'Empezar contrarreloj' }).click();
-await settle(1200);
-check(await page.locator('.clock').isVisible(), 'contrarreloj: clock visible');
+// ── 5. Invasión ──────────────────────────────────────────────────────────
+await page.getByRole('button', { name: /^Invasión/ }).click();
+await settle(1000);
+await page.getByRole('button', { name: 'Defender el núcleo' }).click();
+await settle(5000);
+check(await page.locator('.inv-hud').isVisible(), 'invasion: game running with HUD');
+await page.mouse.click(200, 250);
+await shot('10-invasion');
+await page.evaluate(() => { window.__inv.current.xp += 30; });
+await settle(600);
+check(await page.locator('.inv-card').count() >= 2, 'invasion: level up offers upgrade cards');
+await shot('10b-invasion-cards');
 {
-  const t1 = await page.locator('.clock-num').textContent();
-  await settle(1500);
-  check(t1 !== (await page.locator('.clock-num').textContent()), 'contrarreloj: clock counts down');
-  await shot('10-crono');
-  const st = await save();
-  st.run.timer.deadline = Date.now() - 1000;
-  await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, st]);
-  await page.reload();
-  await settle(800);
-  check((await page.locator('.feedback--bad .feedback-title').textContent()) === 'Se acabó el tiempo', 'contrarreloj: timeout after returning late');
-  await settle(1900);
-  s = await save();
-  check(s.records.dificil.crono.played === 1 && s.records.dificil.classic.played === 0, 'contrarreloj: separate records');
+  const before = await page.evaluate(() => window.__inv.current.taken.length);
+  for (let k = 0; k < 20 && (await page.locator('.inv-card').count()); k++) {
+    await page.locator('.inv-card').first().click();
+    await page.waitForTimeout(150);
+  }
+  check((await page.evaluate(() => window.__inv.current.taken.length)) > before, 'invasion: choosing a card applies it');
 }
+s = await save();
+check(s.invasion.run && s.invasion.run.defenders.length >= 2, 'invasion: game saved at the start of the wave');
+await page.reload();
+await settle(1200);
+check((await page.getByRole('button', { name: /^Invasión/ }).textContent()).includes('Continuar'), 'invasion: home offers to continue');
+await page.getByRole('button', { name: /^Invasión/ }).click();
+await settle(900);
+await page.getByRole('button', { name: /Continuar · oleada/ }).click();
+await settle(2500);
+check(await page.locator('.inv-hud').isVisible(), 'invasion: resumed');
+await page.getByRole('button', { name: 'Pausa' }).click();
+await settle(400);
+check(await page.locator('.inv-build li').count() >= 2, 'invasion: pause shows your defenders');
+await page.getByRole('button', { name: 'Terminar partida' }).click();
+await settle(2600);
+check(await page.getByRole('button', { name: 'Otra vez' }).isVisible(), 'invasion: end screen');
+s = await save();
+check(s.invasion.played === 1 && s.invasion.run === null && s.invasion.bestWave >= 1, 'invasion: record stored, saved game cleared');
+await shot('10c-invasion-over');
 await page.getByRole('button', { name: 'Inicio' }).click();
 await settle(1000);
 
 // ── 6. Adventure ─────────────────────────────────────────────────────────
+await page.getByRole('button', { name: /^Preguntas/ }).click();
+await settle(900);
 await page.getByRole('radio', { name: 'Aventura' }).click();
 await settle(500);
 await shot('11-home-adventure');
@@ -262,6 +288,8 @@ check((await save()).adventure.level === 2, 'adventure: failed level stays');
 await page.evaluate((KEY) => { const s = JSON.parse(localStorage.getItem(KEY)); s.adventure.level = 101; localStorage.setItem(KEY, JSON.stringify(s)); }, KEY);
 await page.reload();
 await settle(900);
+await page.getByRole('button', { name: /^Preguntas/ }).click();
+await settle(900);
 await page.getByRole('button', { name: 'Abrir el mapa' }).click();
 await settle(1200);
 await shot('15-map-boss');
@@ -287,7 +315,7 @@ await settle(1000);
 s = await save();
 const energy0 = s.core.energy;
 check(energy0 > 0 && s.core.earned >= energy0, `correct answers earned energy (${energy0})`);
-await page.getByRole('button', { name: /Abrir tu Núcleo/ }).click();
+await page.getByRole('button', { name: /^Tu Núcleo/ }).click();
 await settle(1000);
 check(await page.locator('.core-stage .chip').isVisible(), 'core: chip visible');
 await page.locator('.core-item:not(:disabled)').first().click();
@@ -315,6 +343,8 @@ await settle(1000);
 await context.setOffline(true);
 await page.reload();
 await settle(1500);
+await page.getByRole('button', { name: /^Preguntas/ }).click();
+await settle(900);
 await page.getByRole('radio', { name: 'Clásico' }).click();
 await page.getByRole('button', { name: 'Empezar', exact: true }).click();
 await settle(900);

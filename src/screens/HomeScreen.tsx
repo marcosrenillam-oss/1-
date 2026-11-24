@@ -1,170 +1,139 @@
-import { TOTAL_QUESTIONS } from '../data/questions';
-import { MAX_RUN, MODE_INFO, MODES, STAGE_THEME, WORLD_LEVELS, WORLDS, type GameMode } from '../engine/difficulty';
-import { adventureProgress, formatMs, winRate } from '../engine/game';
-import type { Play, SaveData } from '../storage/persistence';
-import { IconArrow, IconClock, IconInfinity, IconMap } from '../components/Icons';
-import { LevelBars } from '../components/LevelBars';
-import { Logo } from '../components/Logo';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { MAX_RUN } from '../engine/difficulty';
+import { COLORS, tierOf } from '../engine/core';
+import type { SaveData } from '../storage/persistence';
 import { Chip } from '../components/Chip';
+import { Logo } from '../components/Logo';
+
+export type HubTarget = 'questions' | 'invasion' | 'core';
 
 interface Props {
   save: SaveData;
-  mode: GameMode;
-  play: Play;
-  onMode: (m: GameMode) => void;
-  onPlay: (p: Play) => void;
-  onStart: () => void;
-  onCore: () => void;
+  onOpen: (t: HubTarget) => void;
 }
 
-const PLAYS: { id: Play; label: string; Icon: typeof IconClock }[] = [
-  { id: 'classic', label: 'Clásico', Icon: IconInfinity },
-  { id: 'crono', label: 'Contrarreloj', Icon: IconClock },
-  { id: 'adventure', label: 'Aventura', Icon: IconMap },
-];
+function Branch({ i, label, title, sub, badge, art, onClick, accent }: { i: number; label: string; title: string; sub: string; badge?: string; art: ReactNode; onClick: () => void; accent?: string }) {
+  return (
+    <li className="hub-branch reveal" style={{ ['--d' as string]: `${520 + i * 110}ms`, ['--i' as string]: i, ...(accent ? { ['--b' as string]: accent } : {}) }}>
+      <span className="hub-node" aria-hidden="true" />
+      <button type="button" className="hub-card" onClick={onClick} aria-label={`${title}: ${sub}`}>
+        <span className="hub-art" aria-hidden="true">
+          {art}
+        </span>
+        <span className="hub-text">
+          <span className="eyebrow">{label}</span>
+          <span className="hub-title display">{title}</span>
+          <span className="hub-sub tnum">{sub}</span>
+        </span>
+        {badge && <span className="hub-badge">{badge}</span>}
+        <svg className="hub-chev" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </li>
+  );
+}
 
-export function HomeScreen({ save, mode, play, onMode, onPlay, onStart, onCore }: Props) {
-  const adventure = play === 'adventure';
-  const s = save.records[mode][play === 'crono' ? 'crono' : 'classic'];
-  const seen = Object.keys(save.history.seen).length;
-  const a = save.adventure;
-  const pIdx = PLAYS.findIndex((p) => p.id === play);
-  const mIdx = MODES.indexOf(mode);
+const QuestionsArt = () => (
+  <svg viewBox="0 0 48 48">
+    <rect x="6" y="8" width="36" height="26" rx="8" fill="none" stroke="currentColor" strokeWidth="3" />
+    <path d="M16 34 L14 42 L24 34" fill="currentColor" />
+    <path d="M19.5 17.5a4.5 4.5 0 1 1 6.3 4.1c-1.2.6-1.8 1.4-1.8 2.6" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="24" cy="29" r="1.9" fill="currentColor" />
+  </svg>
+);
+
+const VirusArt = () => (
+  <svg viewBox="0 0 48 48" className="hub-virus">
+    <g stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+      {Array.from({ length: 8 }, (_, k) => {
+        const a = (k / 8) * Math.PI * 2;
+        return (
+          <g key={k}>
+            <line x1={24 + Math.cos(a) * 11} y1={24 + Math.sin(a) * 11} x2={24 + Math.cos(a) * 18} y2={24 + Math.sin(a) * 18} />
+            <circle cx={24 + Math.cos(a) * 19.5} cy={24 + Math.sin(a) * 19.5} r="2.2" fill="currentColor" stroke="none" />
+          </g>
+        );
+      })}
+    </g>
+    <circle cx="24" cy="24" r="11" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeWidth="2.6" />
+    <circle cx="26" cy="22" r="4" fill="currentColor" />
+  </svg>
+);
+
+/** Home: the 1% and its three branches. */
+export function HomeScreen({ save, onOpen }: Props) {
+  const rec = Math.max(save.records.normal.classic.best, save.records.dificil.classic.best);
+  const inv = save.invasion;
+  const core = save.core;
+  const color = COLORS.find((c) => c.id === core.color)?.hex ?? '#c8ff2e';
+  const tree = useRef<HTMLElement>(null);
+  // The trunk runs from under the logo to the last branch's node.
+  useLayoutEffect(() => {
+    const el = tree.current;
+    if (!el) return;
+    const fit = () => {
+      const nodes = el.querySelectorAll('.hub-node');
+      const last = nodes[nodes.length - 1];
+      if (!last) return;
+      const a = el.getBoundingClientRect();
+      const b = last.getBoundingClientRect();
+      el.style.setProperty('--trunk-end', `${Math.max(0, a.bottom - (b.top + b.height / 2))}px`);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   return (
-    <div className="screen-inner home">
+    <div className="screen-inner hub">
       <header className="home-top reveal" style={{ ['--d' as string]: '0ms' }}>
-        <span className="eyebrow">Lógica · <span className="home-count tnum">{TOTAL_QUESTIONS.toLocaleString('es-ES')} preguntas</span></span>
-        <button type="button" className="core-btn" onClick={onCore} aria-label={`Abrir tu Núcleo, chip nivel ${save.core.chip}`}>
-          <Chip core={save.core} className="core-btn-chip" />
-          <span className="display tnum">⚡ {save.core.energy.toLocaleString('es-ES')}</span>
-        </button>
+        <span className="eyebrow">Desafío de lógica</span>
+        <span className="eyebrow home-count tnum">⚡ {core.energy.toLocaleString('es-ES')}</span>
       </header>
 
-      <section className="home-hero">
+      <section className="hub-hero">
         <Logo size={120} />
-        <p className="home-tagline reveal" style={{ ['--d' as string]: '520ms' }}>
-          Un solo fallo y se acabó.
-          <br />
-          <span>Solo el 1 % llega al final.</span>
+        <p className="home-tagline reveal" style={{ ['--d' as string]: '420ms' }}>
+          Solo el 1 % llega al final.
         </p>
       </section>
 
-      <section className="home-controls">
-        <div className="reveal" style={{ ['--d' as string]: '600ms' }}>
-          <div className="gtype gtype--3" role="radiogroup" aria-label="Tipo de partida">
-            <span className="gtype-indicator" style={{ transform: `translateX(${pIdx * 100}%)` }} aria-hidden="true" />
-            {PLAYS.map(({ id, label, Icon }) => (
-              <button key={id} type="button" role="radio" aria-checked={play === id} className={`gtype-opt${play === id ? ' is-active' : ''}`} onClick={() => onPlay(id)}>
-                <Icon className="gtype-icon" />
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="reveal home-play" style={{ ['--d' as string]: '660ms' }}>
-        {!adventure ? (
-          <>
-            <div>
-              <div className="diff diff--2" role="radiogroup" aria-label="Dificultad">
-                <span className="diff-indicator" style={{ transform: `translateX(${mIdx * 100}%)` }} aria-hidden="true" />
-                {MODES.map((m) => (
-                  <button key={m} type="button" role="radio" aria-checked={m === mode} className={`diff-opt${m === mode ? ' is-active' : ''}`} onClick={() => onMode(m)}>
-                    <LevelBars level={MODE_INFO[m].level} />
-                    <span className="diff-label">{MODE_INFO[m].label}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="mode-tagline swap" key={`t-${mode}-${play}`}>
-                {play === 'crono' ? 'Cada pregunta tiene su tiempo. Si se agota, pierdes.' : MODE_INFO[mode].tagline} 20 = victoria · hasta 100.
-              </p>
-            </div>
-
-            <div>
-              <div className="stats swap" key={`s-${mode}-${play}`}>
-                <div className="stat-record">
-                  <span className="eyebrow">
-                    Récord · {MODE_INFO[mode].label}
-                    {play === 'crono' ? ' · Contrarreloj' : ''}
-                  </span>
-                  <div className="record-value display tnum">
-                    <span className={s.best >= 20 ? 'is-max' : ''} style={s.best >= 20 ? { color: STAGE_THEME[Math.min(4, Math.floor(s.best / 20) - (s.best === MAX_RUN ? 1 : 0))].accent } : undefined}>
-                      {String(s.best).padStart(2, '0')}
-                    </span>
-                    <span className="record-of">/{MAX_RUN}</span>
-                  </div>
-                </div>
-                <div className="stage-track" aria-label={`Fases superadas en tu récord: ${s.bestStage} de 5`}>
-                  {STAGE_THEME.map((t, i) => (
-                    <span key={i} className={`stage-seg${i < s.bestStage ? ' is-done' : ''}`} style={{ ['--seg' as string]: t.accent }} />
-                  ))}
-                </div>
-                <div className="stat-grid">
-                  <div className="stat">
-                    <span className="stat-value display tnum">{s.played}</span>
-                    <span className="stat-label">Partidas</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value display tnum">{s.completed}</span>
-                    <span className="stat-label">Victorias (20+)</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value display tnum">
-                      {winRate(s)}
-                      <small>%</small>
-                    </span>
-                    <span className="stat-label">Ratio</span>
-                  </div>
-                </div>
-                <div className="stat-progress-row">
-                  {play === 'crono' ? (
-                    <span>
-                      Mejor tiempo hasta 20 <b className="tnum">{s.bestTimeMs ? formatMs(s.bestTimeMs) : '—'}</b>
-                    </span>
-                  ) : (
-                    <span>
-                      Fases superadas <b className="tnum">{s.bestStage}/5</b>
-                    </span>
-                  )}
-                  <span className="tnum">
-                    Vistas <b>{seen.toLocaleString('es-ES')}</b>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div>
-            <div className="adv-card swap" style={{ ['--w' as string]: STAGE_THEME[a.world].accent }}>
-              <div className="adv-card-top">
-                <span className="eyebrow">{a.finished ? 'Aventura completada' : `Mundo ${a.world + 1} de ${WORLDS.length}`}</span>
-                <span className="adv-total display tnum">{adventureProgress(save)}%</span>
-              </div>
-              <p className="adv-name display">{a.finished ? 'Eres del 1 %' : WORLDS[a.world].name}</p>
-              <p className="adv-tag">{a.finished ? 'Has superado los cinco mundos y sus jefes.' : WORLDS[a.world].tagline}</p>
-              <div className="adv-worlds" aria-hidden="true">
-                {WORLDS.map((_, i) => (
-                  <span key={i} className={`adv-w${i < a.world || a.finished ? ' is-done' : i === a.world ? ' is-current' : ''}`} style={{ ['--seg' as string]: STAGE_THEME[i].accent }}>
-                    {i === a.world && !a.finished && <span style={{ transform: `scaleX(${(a.level - 1) / (WORLD_LEVELS + 1)})` }} />}
-                  </span>
-                ))}
-              </div>
-              <p className="adv-next tnum">
-                {a.finished ? '5 jefes derrotados' : a.level > WORLD_LEVELS ? 'Te espera el jefe final del mundo' : `Siguiente nivel: ${WORLD_LEVELS + 1 - a.level} %`}
-              </p>
-            </div>
-          </div>
-        )}
-        </div>
-      </section>
-
-      <div className="home-cta reveal" style={{ ['--d' as string]: '840ms' }}>
-        <button type="button" className="btn btn-primary btn-xl" onClick={onStart}>
-          <span>{adventure ? (a.answered ? 'Abrir el mapa' : 'Empezar la aventura') : play === 'crono' ? 'Empezar contrarreloj' : 'Empezar'}</span>
-          <IconArrow className="btn-icon" />
-        </button>
-      </div>
+      <nav className="hub-tree" aria-label="Juegos" ref={tree}>
+        <span className="hub-trunk" aria-hidden="true">
+          <span className="hub-spark" />
+        </span>
+        <ul className="hub-list">
+        <Branch
+          i={0}
+          label="Lógica"
+          title="Preguntas"
+          sub={rec ? `Clásico y aventura · récord ${rec}/${MAX_RUN}` : 'Clásico y aventura'}
+          art={<QuestionsArt />}
+          onClick={() => onOpen('questions')}
+        />
+        <Branch
+          i={1}
+          label="Modo infinito"
+          title="Invasión"
+          sub={inv.run ? `Continuar · oleada ${inv.run.wave + 1}` : inv.bestWave ? `Defiende el núcleo · mejor oleada ${inv.bestWave}` : 'Defiende el núcleo de los virus'}
+          badge={inv.played === 0 && !inv.run ? 'Nuevo' : undefined}
+          art={<VirusArt />}
+          accent="#ff3b5c"
+          onClick={() => onOpen('invasion')}
+        />
+        <Branch
+          i={2}
+          label={`Chip nivel ${core.chip} · ${tierOf(core.chip).name}`}
+          title="Tu Núcleo"
+          sub={`Construye y evoluciona · ⚡ ${core.energy.toLocaleString('es-ES')}`}
+          art={<Chip core={core} className="hub-chip" />}
+          accent={color}
+          onClick={() => onOpen('core')}
+        />
+        </ul>
+      </nav>
     </div>
   );
 }

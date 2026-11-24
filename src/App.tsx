@@ -4,7 +4,13 @@ import { abandonRun, sanitizeRun, startAdventure, startRun, startTimer, submitAn
 import { defaultRng } from './engine/rng';
 import { loadSave, requestPersistence, writeSave, type ActiveRun, type Play, type SaveData } from './storage/persistence';
 import { GameScreen } from './screens/GameScreen';
-import { HomeScreen } from './screens/HomeScreen';
+import { HomeScreen, type HubTarget } from './screens/HomeScreen';
+import { QuestionsScreen } from './screens/QuestionsScreen';
+import { InvasionScreen } from './screens/InvasionScreen';
+import { finishInvasion } from './invasion/record';
+import type { InvasionSnapshot } from './invasion/sim';
+import type { Game } from './invasion/types';
+import { COLORS } from './engine/core';
 import { MapScreen } from './screens/MapScreen';
 import { CoreScreen } from './screens/CoreScreen';
 import type { CoreState } from './engine/core';
@@ -16,6 +22,8 @@ import { setSafeToUpdate } from './pwa';
 type Screen =
   | { name: 'home' }
   | { name: 'core' }
+  | { name: 'questions' }
+  | { name: 'invasion' }
   | { name: 'map'; justPassed?: { world: number; level: number } | null }
   | { name: 'game' }
   | { name: 'result'; result: RunResult }
@@ -26,7 +34,7 @@ const rng = defaultRng();
 export default function App() {
   const [save, setSave] = useState<SaveData>(() => sanitizeRun(loadSave()));
   const [mode, setMode] = useState<GameMode>(() => save.run?.mode ?? save.lastMode);
-  const [play, setPlay] = useState<Play>(() => (save.run ? (save.run.type === 'adventure' ? 'adventure' : save.run.timed ? 'crono' : 'classic') : save.lastPlay));
+  const [play, setPlay] = useState<Play>(() => (save.run ? (save.run.type === 'adventure' ? 'adventure' : save.run.timed ? 'crono' : 'classic') : save.lastPlay === 'crono' ? 'classic' : save.lastPlay));
   // An unfinished run (app closed mid-game) resumes where it was left.
   const [screen, setScreen] = useState<Screen>(() => (save.run ? { name: 'game' } : { name: 'home' }));
   const [screenKey, setScreenKey] = useState(0);
@@ -70,6 +78,16 @@ export default function App() {
   }, [commit]);
 
   const changeCore = useCallback((c: CoreState) => commit({ ...saveRef.current, core: c }), [commit]);
+
+  const invasionSnapshot = useCallback((s: InvasionSnapshot) => {
+    const cur = saveRef.current;
+    commit({ ...cur, invasion: { ...cur.invasion, run: s } });
+  }, [commit]);
+  const invasionFinish = useCallback((g: Game) => {
+    const out = finishInvasion(saveRef.current, g);
+    commit(out.save);
+    return out.result;
+  }, [commit]);
 
   const startGame = useCallback((m: GameMode, p: Play) => {
     if (navigating.current) return;
@@ -130,7 +148,7 @@ export default function App() {
   }, [commit, go]);
 
   let content: ReactNode;
-  const home = <HomeScreen save={save} mode={mode} play={play} onMode={changeMode} onPlay={changePlay} onStart={() => startGame(mode, play)} onCore={() => go({ name: 'core' })} />;
+  const home = <HomeScreen save={save} onOpen={(t: HubTarget) => go({ name: t })} />;
   if (screen.name === 'game' && runRef.current) {
     content = (
       <GameScreen
@@ -141,6 +159,18 @@ export default function App() {
         onAbandon={abandon}
         onStartTimer={beginTimer}
         onTimeout={timeout}
+      />
+    );
+  } else if (screen.name === 'questions') {
+    content = <QuestionsScreen save={save} mode={mode} play={play} onMode={changeMode} onPlay={changePlay} onStart={() => startGame(mode, play === 'crono' ? 'classic' : play)} onHome={() => go({ name: 'home' })} />;
+  } else if (screen.name === 'invasion') {
+    content = (
+      <InvasionScreen
+        record={save.invasion}
+        color={COLORS.find((c) => c.id === save.core.color)?.hex ?? '#c8ff2e'}
+        onSnapshot={invasionSnapshot}
+        onFinish={invasionFinish}
+        onHome={() => go({ name: 'home' })}
       />
     );
   } else if (screen.name === 'core') {

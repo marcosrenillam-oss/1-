@@ -7,6 +7,7 @@ import './styles/animations.css';
 import './styles/home.css';
 import './styles/game.css';
 import './styles/result.css';
+import './styles/invasion.css';
 import './styles/fit.css';
 
 createRoot(document.getElementById('root')!).render(

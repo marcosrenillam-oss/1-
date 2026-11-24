@@ -538,3 +538,210 @@
   flex-direction: column;
   gap: 22px;
 }
+
+/* ── Home hub: the 1% and its three branches ─────────────────────────── */
+.hub {
+  gap: 0;
+}
+.hub-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 26px 0 6px;
+}
+.hub-hero .logo {
+  font-size: clamp(92px, 32vw, 132px) !important;
+}
+.hub-hero .home-tagline {
+  margin-top: 16px;
+  color: var(--gray);
+  font-weight: 500;
+}
+.hub-tree {
+  position: relative;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18px 0 8px;
+}
+/* The trunk comes down from the logo and feeds every branch. */
+.hub-trunk {
+  position: absolute;
+  left: 14px;
+  top: 0;
+  bottom: var(--trunk-end, 50%);
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, var(--lime-dim), var(--lime) 30%, rgba(200, 255, 46, 0.35));
+  overflow: hidden;
+  transform-origin: top;
+  animation: hubGrow 0.7s 0.35s var(--ease-out) both;
+}
+.hub-spark {
+  position: absolute;
+  left: -1px;
+  width: 4px;
+  height: 46px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent, #fff, transparent);
+  animation: hubSpark 2.4s 1.2s ease-in infinite;
+}
+@keyframes hubGrow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes hubSpark {
+  0% { top: -50px; opacity: 0; }
+  10% { opacity: 1; }
+  100% { top: 100%; opacity: 0.6; }
+}
+.hub-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hub-branch {
+  --b: var(--lime);
+  position: relative;
+  padding-left: 40px;
+}
+/* Horizontal connector trunk → card */
+.hub-branch::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  width: 25px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--lime), var(--b));
+  transform-origin: left;
+  animation: hubBranch 0.5s calc(0.75s + var(--i) * 0.12s) var(--ease-out) both;
+}
+@keyframes hubBranch {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.hub-node {
+  position: absolute;
+  z-index: 1;
+  left: 9px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 3px;
+  background: var(--carbon);
+  box-shadow: inset 0 0 0 2px var(--lime), 0 0 12px var(--lime-glow);
+  transform: rotate(45deg);
+  animation: hubNode 2.6s calc(var(--i) * 0.4s + 1.4s) ease-in-out infinite;
+}
+@keyframes hubNode {
+  0%, 70%, 100% { background: var(--carbon); }
+  80% { background: var(--lime); }
+}
+.hub-card {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 14px 14px 12px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--b) 9%, var(--carbon-2)), var(--carbon-2) 60%);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 0 1px color-mix(in srgb, var(--b) 16%, transparent);
+  text-align: left;
+  transition: transform 0.18s var(--ease-out), box-shadow 0.25s;
+}
+.hub-card:active {
+  transform: scale(0.97);
+  box-shadow: inset 0 0 0 1.5px var(--b);
+}
+.hub-art {
+  flex: none;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--b) 10%, var(--carbon));
+  color: var(--b);
+}
+.hub-art svg {
+  width: 38px;
+  height: 38px;
+}
+.hub-art .hub-chip {
+  width: 56px;
+  height: 56px;
+}
+.hub-virus {
+  animation: chipSpin 14s linear infinite;
+}
+.hub-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hub-text .eyebrow {
+  color: var(--b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hub-title {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.hub-sub {
+  font-size: 13px;
+  color: var(--gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hub-badge {
+  position: absolute;
+  top: -7px;
+  right: 14px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--b);
+  color: #0b0c0e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  animation: badgePop 0.6s 1.4s var(--ease-spring) both;
+}
+.hub-chev {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--gray-2);
+}
+.qs-tagline {
+  margin: 14px 0 18px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+}
+.qs-tagline span {
+  color: var(--gray);
+  font-weight: 500;
+}
+.qs .home-controls {
+  flex: 1 0 auto;
+}
+@media (max-height: 700px) {
+  .hub-hero { padding-top: 10px; }
+  .hub-hero .logo { font-size: 92px !important; }
+  .hub-card { padding: 10px 12px 10px 10px; }
+  .hub-art { width: 50px; height: 50px; }
+  .hub-list { gap: 10px; }
+}
