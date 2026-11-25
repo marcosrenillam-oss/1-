@@ -1,9 +1,9 @@
-import { DEF_INFO, DEF_KINDS, defenderName, EVOS, evoOptions, fusionName, makeDefender, SYNERGIES } from './defenders';
+import { behOf, CHIP_SLOTS, CHIPS, chipOfKind, DEF_INFO, DEF_KINDS, defenderName, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES } from './defenders';
 import type { DefKind, Defender, Game, Stats } from './types';
 
 export const MAX_DEFENDERS = 10;
 
-export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc';
+export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip';
 export type Rarity = 'comun' | 'rara' | 'epica' | 'legendaria';
 export const RARITY_LABEL: Record<Rarity, string> = { comun: 'Común', rara: 'Rara', epica: 'Épica', legendaria: 'Legendaria' };
 export interface Card {
@@ -37,7 +37,7 @@ interface StatDef {
   w?: number;
 }
 const PROJ: DefKind[] = ['canon', 'hielo', 'misil', 'drones'];
-const countWord: Record<DefKind, string> = {
+const countWord: Partial<Record<DefKind, string>> = {
   canon: 'bala', laser: 'haz', rayo: 'rayo', pulso: 'onda', misil: 'misil', hielo: 'esquirla', cuchillas: 'cuchilla', mortero: 'proyectil',
   francotirador: 'objetivo', llamas: 'llama', gravedad: 'agujero', drones: 'dron', acido: 'lanzamiento', bumeran: 'bumerán', minas: 'mina', cronos: 'pulso',
 };
@@ -46,7 +46,7 @@ export const STAT_CARDS: StatDef[] = [
   { id: 'dmg', title: () => 'Daño +25 %', desc: 'Golpea más fuerte.', apply: (s) => { s.dmg *= 1.25; }, w: 1.4 },
   { id: 'rate', title: (d) => (d.kind === 'cuchillas' ? 'Giro +20 %' : 'Cadencia +20 %'), desc: 'Actúa más a menudo.', apply: (s) => { s.rate *= 1.2; }, w: 1.3 },
   { id: 'range', title: (d) => (d.kind === 'cuchillas' ? 'Radio +15 %' : 'Alcance +15 %'), desc: 'Llega más lejos.', ok: (s) => s.range < 900, apply: (s) => { s.range *= 1.15; } },
-  { id: 'count', title: (d) => `+1 ${countWord[d.kind]}`, desc: 'Más a la vez.', kinds: DEF_KINDS.filter((k) => !NO_COUNT.includes(k)), ok: (s) => s.count < 12, apply: (s) => { s.count += 1; if (s.spread < 0.3) s.spread += 0.12; }, w: 1.2 },
+  { id: 'count', title: (d) => `+1 ${countWord[behOf(d.kind)] ?? 'disparo'}`, desc: 'Más a la vez.', kinds: DEF_KINDS.filter((k) => !NO_COUNT.includes(k)), ok: (s) => s.count < 12, apply: (s) => { s.count += 1; if (s.spread < 0.3) s.spread += 0.12; }, w: 1.2 },
   { id: 'pierce', title: () => 'Perforación +1', desc: 'Atraviesa un virus más.', kinds: PROJ, ok: (s) => s.pierce < 20, apply: (s) => { s.pierce += 1; } },
   { id: 'bounce', title: () => 'Rebote +1', desc: 'Rebota hacia otro virus.', kinds: ['canon', 'hielo'], ok: (s) => s.bounce < 6, apply: (s) => { s.bounce += 1; } },
   { id: 'chain', title: () => 'Salto +1', desc: 'Salta a un virus más.', kinds: ['rayo', 'laser'], apply: (s) => { s.chain += 1; } },
@@ -181,15 +181,19 @@ export const PACT_CARDS: GlobalDef[] = [
 
 /** Distinct upgrades in the game (fusions counted once per pair of types). */
 export const FUSION_PAIRS = (DEF_KINDS.length * (DEF_KINDS.length - 1)) / 2;
-export const CATALOGUE_SIZE = DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
+export const CATALOGUE_SIZE = CHIPS.length * (1 + CHIP_SLOTS) + DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
 
 export const kindsOf = (d: Defender): DefKind[] => (d.fuse ? [d.kind, d.fuse.kind] : [d.kind]);
 const owned = (g: Game) => new Set(g.defenders.flatMap(kindsOf));
 
+/** Main-ring defenders always come first in the list, extra-chip ones after. */
+export const mainRing = (g: Game) => g.defenders.filter((d) => !d.chip);
+
 export function addDefender(g: Game, kind: DefKind, at?: number): Defender {
   const d = makeDefender(g.nextId++, kind);
-  if (at === undefined || at < 0 || at > g.defenders.length) g.defenders.push(d);
-  else g.defenders.splice(at, 0, d);
+  const mains = mainRing(g).length;
+  if (d.chip) g.defenders.push(d);
+  else g.defenders.splice(at === undefined || at < 0 || at > mains ? mains : at, 0, d);
   refreshSynergies(g);
   return d;
 }
@@ -202,12 +206,14 @@ export interface Placement {
   syn: string[];
 }
 export function placements(g: Game, kind: DefKind): Placement[] {
-  const n = g.defenders.length;
+  if (chipOfKind(kind)) return [];
+  const ring = mainRing(g);
+  const n = ring.length;
   if (n < 3) return [];
   const out: Placement[] = [];
   for (let i = 0; i < n; i++) {
-    const left = g.defenders[i];
-    const right = g.defenders[(i + 1) % n];
+    const left = ring[i];
+    const right = ring[(i + 1) % n];
     const syn = SYNERGIES.filter((sy) => [left, right].some((d) => kindsOf(d).some((k) => (sy.a === kind && sy.b === k) || (sy.b === kind && sy.a === k)))).map((sy) => sy.name);
     out.push({ at: i + 1, left, right, syn: [...new Set(syn)] });
   }
@@ -222,13 +228,14 @@ export function refreshSynergies(g: Game) {
   for (const id of now) if (!g.syn.includes(id)) g.events.push(`syn:${id}`);
   g.syn = now;
   // Neighbours on the ring (or both halves of one fusion) make a synergy stronger.
-  const n = g.defenders.length;
+  const ring = mainRing(g);
+  const n = ring.length;
   const adj = (a: DefKind, b: DefKind) =>
-    g.defenders.some((d, i) => {
+    ring.some((d, i) => {
       const ks = kindsOf(d);
       if (ks.includes(a) && ks.includes(b)) return true;
       if (!ks.includes(a) || n < 2) return false;
-      return [g.defenders[(i + 1) % n], g.defenders[(i - 1 + n) % n]].some((o) => o !== d && kindsOf(o).includes(b));
+      return [ring[(i + 1) % n], ring[(i - 1 + n) % n]].some((o) => o !== d && kindsOf(o).includes(b));
     });
   g.synAdj = SYNERGIES.filter((s) => now.includes(s.id) && adj(s.a, s.b)).map((s) => s.id);
 }
@@ -244,7 +251,7 @@ function newDefenderCard(g: Game, kind: DefKind): Card {
   return {
     key: `new-${kind}`, id: `new-${kind}`, kind: 'new', rarity: 'rara', title: info.name,
     desc: info.desc + (syn.length ? ` Sinergia: ${syn.map((x) => x.name).join(', ')}.` : ''),
-    tag: `Nuevo defensor · ${g.defenders.length + 1}/${MAX_DEFENDERS}`, color: info.color,
+    tag: info.chip ? `Chip ${CHIPS[chipOfKind(kind) - 1].name} · defensor ${g.defenders.filter((x) => x.chip === chipOfKind(kind)).length + 1}/${CHIP_SLOTS}` : `Nuevo defensor · ${mainRing(g).length + 1}/${MAX_DEFENDERS}`, color: info.color,
     apply: (gg, at) => { addDefender(gg, kind, at); gg.g.horde *= 1.06; threaten(gg); },
   };
 }
@@ -273,9 +280,48 @@ function fusionCard(a: Defender, b: Defender): Card {
   };
 }
 
+/** Is the next chip ready to be unlocked? */
+export function chipReady(g: Game): boolean {
+  if (g.chips >= MAX_CHIPS) return false;
+  if (g.chips === 1) {
+    const ring = mainRing(g);
+    const kinds = new Set(ring.flatMap(kindsOf)).size;
+    const evolutions = ring.reduce((a, d) => a + (d.fuse ? 4 : d.evo.length), 0);
+    return kinds >= Math.min(7, g.unlocked.length) && evolutions >= 6 && g.level >= 30;
+  }
+  const crew = g.defenders.filter((d) => d.chip === g.chips - 1);
+  return crew.length >= 2 && g.level >= 30 + 14 * (g.chips - 1);
+}
+function chipCard(g: Game): Card {
+  const ch = CHIPS[g.chips - 1];
+  const nth = ['Segundo', 'Tercer', 'Cuarto', 'Quinto'][g.chips - 1];
+  return {
+    key: `chip-${ch.id}`, id: `chip-${ch.id}`, kind: 'chip', rarity: 'legendaria', title: `${nth} chip: ${ch.name}`,
+    desc: `${ch.ability} Trae sus propios defensores, distintos a todos los demás.`, tag: `Nuevo chip · ${g.chips + 1}/${MAX_CHIPS}`, color: ch.color,
+    apply: (gg) => {
+      gg.chips += 1;
+      addDefender(gg, ch.kinds[0]);
+      gg.events.push('chip');
+      threaten(gg);
+    },
+  };
+}
+/** Exclusive defenders still missing on the extra chips. */
+function chipKindsAvailable(g: Game): DefKind[] {
+  const out: DefKind[] = [];
+  for (let k = 1; k < g.chips; k++) {
+    const crew = g.defenders.filter((d) => d.chip === k);
+    if (crew.length >= CHIP_SLOTS) continue;
+    out.push(...CHIPS[k - 1].kinds.filter((x) => !crew.some((d) => d.kind === x)));
+  }
+  return out;
+}
+
 function cardFor(g: Game, rnd: () => number): Card | null {
-  const n = g.defenders.length;
+  const n = mainRing(g).length;
   const r = rnd();
+  const extra = chipKindsAvailable(g);
+  if (extra.length && rnd() < 0.3) return newDefenderCard(g, extra[Math.floor(rnd() * extra.length)]);
   const kinds = availableKinds(g);
   // New defenders: guaranteed early, rarer later. Never the same type twice.
   const newW = n >= MAX_DEFENDERS || !kinds.length ? 0 : n < 3 ? 0.35 : n < 6 ? 0.18 : 0.1;
@@ -312,7 +358,7 @@ function cardFor(g: Game, rnd: () => number): Card | null {
   // Stat upgrade on one defender (a fusion upgrades both halves).
   if (!n) return null;
   const d = g.defenders[Math.floor(rnd() * n)];
-  const pool = STAT_CARDS.filter((s) => (!s.kinds || s.kinds.includes(d.kind)) && (!s.ok || s.ok(d.stats)));
+  const pool = STAT_CARDS.filter((s) => (!s.kinds || s.kinds.includes(behOf(d.kind))) && (!s.ok || s.ok(d.stats)));
   const total = pool.reduce((a, c) => a + (c.w ?? 1), 0);
   let x = rnd() * total;
   const s = pool.find((c) => (x -= c.w ?? 1) <= 0) ?? pool[0];
@@ -359,6 +405,7 @@ export function offer(g: Game, rnd: () => number): Card[] {
   }
   const out: Card[] = [];
   const want = g.g.choices;
+  if (chipReady(g) && rnd() < 0.6) out.push(chipCard(g));
   const pairs = fusablePairs(g);
   if (pairs.length && rnd() < 0.55) {
     const [a, b] = pairs[Math.floor(rnd() * pairs.length)];
@@ -370,7 +417,7 @@ export function offer(g: Game, rnd: () => number): Card[] {
   }
   // Early on, always offer a new defender.
   const kinds = availableKinds(g);
-  if (g.defenders.length < 3 && kinds.length && !out.some((c) => c.kind === 'new')) out[out.length - 1] = newDefenderCard(g, kinds[Math.floor(rnd() * kinds.length)]);
+  if (mainRing(g).length < 3 && kinds.length && !out.some((c) => c.kind === 'new')) out[out.length - 1] = newDefenderCard(g, kinds[Math.floor(rnd() * kinds.length)]);
   return out;
 }
 
@@ -383,7 +430,7 @@ export function choose(g: Game, c: Card, at?: number) {
   const d = c.kind === 'new' ? g.defenders.find((x) => x.id === g.nextId - 1) : g.defenders.find((x) => x.id === c.target);
   const gl = GLOBAL_CARDS.find((x) => x.id === c.id);
   const [x, y] = d ? [d.x, d.y] : gl?.struct ? [0, -(c.id === 'aura' ? 70 : 104)] : [0, 0];
-  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc';
+  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip';
   g.fx.push({ k: 'ring', x, y, r0: 6, r1: big ? 90 : 44, life: big ? 0.8 : 0.5, max: big ? 0.8 : 0.5, c: c.color, w: big ? 5 : 3 });
   g.fx.push({ k: 'flash', x, y, r: big ? 50 : 24, life: 0.3, max: 0.3, c: c.color });
   g.fx.push({ k: 'txt', x, y: y - 18, s: c.title, life: 1.4, max: 1.4, c: c.color });

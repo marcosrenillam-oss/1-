@@ -9,6 +9,8 @@ import type { DefKind, Game } from '../invasion/types';
 import type { InvasionRecord } from '../storage/persistence';
 import { IconBack } from '../components/Icons';
 import { haptic } from '../haptics';
+import { onSoundPrefs, setMusicIntensity, setSoundPrefs, sfx, soundPrefs, startMusic, stopMusic, unlockAudio } from '../audio';
+import { CHIPS } from '../invasion/defenders';
 import { motionMs } from '../motion';
 
 interface Props {
@@ -37,9 +39,13 @@ const fmt = (n: number) => Math.round(n).toLocaleString('es-ES');
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 /** World units across the short side of the screen. */
 const WORLD = 360;
+/** The view zooms out as chips are added, so all of them fit. */
+const ZOOM = [1, 1.55, 1.6, 1.8, 1.9];
 
 export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, onHome }: Props) {
   const [phase, setPhase] = useState<Phase>('intro');
+  const phaseRef = useRef<Phase>('intro');
+  phaseRef.current = phase;
   const [hud, setHud] = useState<Hud | null>(null);
   const [cards, setCards] = useState<Card[] | null>(null);
   const [paused, setPaused] = useState(false);
@@ -52,6 +58,15 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
   const view = useRef<View>({ w: 390, h: 800, scale: 1, color });
   const bg = useRef<HTMLCanvasElement | null>(null);
   const pausedRef = useRef(false);
+  const zoomRef = useRef(1);
+  const dprRef = useRef(1);
+  const [prefs, setPrefs] = useState(soundPrefs);
+  useEffect(() => onSoundPrefs(() => setPrefs({ ...soundPrefs() })), []);
+  const toggleSound = (k: 'sfx' | 'music') => {
+    unlockAudio();
+    setSoundPrefs({ [k]: !soundPrefs()[k] });
+    if (k === 'music' && soundPrefs().music && phaseRef.current === 'play') startMusic();
+  };
   const cardsRef = useRef<Card[] | null>(null);
   const finished = useRef(false);
   const seenFusions = useRef(new Set<number>());
@@ -76,6 +91,9 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     setCards(null);
     setPaused(false);
     setPhase('play');
+    unlockAudio();
+    startMusic();
+    zoomRef.current = ZOOM[(game.current.chips ?? 1) - 1];
     haptic('heavy');
   }, []);
 
@@ -86,10 +104,11 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     const fit = () => {
       const r = el.getBoundingClientRect();
       const dpr = Math.min(3, window.devicePixelRatio || 1);
+      dprRef.current = dpr;
       const v = view.current;
       v.w = r.width;
       v.h = r.height;
-      v.scale = Math.min(r.width, r.height) / WORLD;
+      v.scale = Math.min(r.width, r.height) / (WORLD * zoomRef.current);
       v.color = color;
       const c = canvas.current;
       if (c) {
@@ -124,6 +143,8 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     }
   }, []);
 
+  useEffect(() => () => stopMusic(), []);
+
   // Pause when the app goes to the background.
   useEffect(() => {
     const onVis = () => {
@@ -139,6 +160,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     let raf = 0;
     let last = performance.now();
     let hudT = 0;
+    let musicT = 0;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -148,6 +170,24 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
       if (!g || !c) return;
       const running = !pausedRef.current && !cardsRef.current;
       if (running) update(g, dt);
+      // Zoom out smoothly when a chip is added.
+      const want = ZOOM[Math.min(ZOOM.length, g.chips) - 1];
+      if (Math.abs(want - zoomRef.current) > 0.002) {
+        zoomRef.current += (want - zoomRef.current) * Math.min(1, dt * 2.5);
+        const v = view.current;
+        v.scale = Math.min(v.w, v.h) / (WORLD * zoomRef.current);
+        g.arena = v.w / 2 / v.scale;
+        g.arenaY = v.h / 2 / v.scale;
+        if (bg.current) drawBackground(bg.current, v, dprRef.current);
+      }
+      // Sound
+      for (const n of g.sfx) sfx(n);
+      g.sfx.length = 0;
+      musicT -= dt;
+      if (musicT <= 0) {
+        musicT = 0.5;
+        setMusicIntensity(Math.min(4, Math.floor(g.wave / 7) + (g.chips > 1 ? 1 : 0)), g.viruses.some((x) => x.boss));
+      }
       // Events
       for (const e of g.events) {
         if (e === 'wave' || e === 'boss') {
@@ -157,18 +197,30 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
             showBanner(`Oleada ${g.wave}`, bossType ? `¡Jefe: ${BOSS_NAMES[bossType]}!` : '¡Jefe!', true);
             haptic('heavy');
           } else showBanner(`Oleada ${g.wave}`);
+          sfx(e);
         } else if (e === 'hit') haptic('error');
+        else if (e === 'level') sfx('level');
+        else if (e === 'chip') {
+          haptic('heavy');
+          sfx('chip');
+          showBanner(`¡Nuevo chip: ${CHIPS[g.chips - 2]?.name ?? ''}!`, 'Trabaja conectado al núcleo con sus propios defensores');
+        }
         else if (e === 'bosskill') {
           haptic('heavy');
           showBanner('Jefe eliminado', undefined, true);
         } else if (e === 'backup') showBanner('Copia de seguridad', 'El núcleo se ha restaurado');
-        else if (e === 'evo') haptic('success');
+        else if (e === 'evo') {
+          haptic('success');
+          sfx('evo');
+        }
         else if (e === 'fusion') {
           haptic('heavy');
+          sfx('fusion');
           showBanner('¡Fusión legendaria!', defenderName(g.defenders.find((d) => d.fuse && !seenFusions.current.has(d.id)) ?? g.defenders[0]));
           g.defenders.forEach((d) => d.fuse && seenFusions.current.add(d.id));
         } else if (e === 'wallbreak') {
           haptic('error');
+          sfx('wallbreak');
           showBanner('¡Muro roto!', 'Se reconstruye en la próxima oleada', true);
         } else if (e.startsWith('syn:')) {
           const sy = SYNERGIES.find((x) => x.id === e.slice(4));
@@ -185,6 +237,8 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
       if (g.over && !finished.current) {
         finished.current = true;
         haptic('heavy');
+        sfx('over');
+        stopMusic();
         window.setTimeout(() => {
           setResult(finishRef.current(g));
           setPhase('over');
@@ -226,6 +280,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     }
     setPlacing(null);
     choose(g, c, at);
+    sfx(c.kind === 'asc' ? 'asc' : 'pick');
     haptic(c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' ? 'heavy' : 'success');
     if (g.pending > 0) {
       const o = offer(g, () => rand(g));
@@ -281,6 +336,15 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
             )}
           </div>
           <div className="inv-intro-cta">
+            <div className="inv-sound-row">
+              <button type="button" className={`inv-toggle${prefs.sfx ? ' is-on' : ''}`} aria-pressed={prefs.sfx} onClick={() => toggleSound('sfx')}>
+                Efectos {prefs.sfx ? 'sí' : 'no'}
+              </button>
+              <button type="button" className={`inv-toggle${prefs.music ? ' is-on' : ''}`} aria-pressed={prefs.music} onClick={() => toggleSound('music')}>
+                Música {prefs.music ? 'sí' : 'no'}
+              </button>
+            </div>
+
             <button type="button" className="inv-lab-btn" onClick={() => setPhase('lab')}>
               <span className="display">Laboratorio</span>
               <span className="tnum">◆ {fmt(record.datos)}</span>
@@ -481,7 +545,15 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
             <p className="inv-build-sum tnum">
               {g.taken.length} mejoras · {new Set(g.taken).size} distintas de {CATALOGUE_SIZE} · ⚡ {fmt(energyFor(g))} y ◆ {fmt(datosFor(g))} si terminas ahora
             </p>
-            <div className="inv-pause-cta">
+            <div className="inv-sound-row">
+              <button type="button" className={`inv-toggle${prefs.sfx ? ' is-on' : ''}`} aria-pressed={prefs.sfx} onClick={() => toggleSound('sfx')}>
+                Efectos {prefs.sfx ? 'sí' : 'no'}
+              </button>
+              <button type="button" className={`inv-toggle${prefs.music ? ' is-on' : ''}`} aria-pressed={prefs.music} onClick={() => toggleSound('music')}>
+                Música {prefs.music ? 'sí' : 'no'}
+              </button>
+            </div>
+                        <div className="inv-pause-cta">
               <button type="button" className="btn btn-primary btn-lg" onClick={() => setPaused(false)}>
                 Continuar
               </button>

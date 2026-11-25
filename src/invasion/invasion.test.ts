@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOGUE_SIZE, choose, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
+import { CATALOGUE_SIZE, chipReady, choose, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
 import { buyLab } from './record';
 import { LAB, NEW_KINDS, startOpts } from './lab';
-import { BASE_KINDS, DEF_KINDS, EVOS, evoOptions, SYNERGIES } from './defenders';
+import { BASE_KINDS, chipPos, CHIPS, DEF_KINDS, EVOS, evoOptions, MAX_CHIPS, SYNERGIES } from './defenders';
 import { finishInvasion } from './record';
 import { energyFor, newGame, rand, restore, snapshot, structs, update, WALL_R } from './sim';
 import type { Game } from './types';
@@ -203,6 +203,37 @@ describe('Invasión', () => {
     for (const k of ['hielo', 'canon', 'rayo', 'laser'] as const) addDefender(h, k);
     expect(h.syn).toContain('superconductor');
     expect(h.synAdj).not.toContain('superconductor');
+  });
+
+  it('a strong defence unlocks extra chips, each with its own exclusive defenders', () => {
+    const g = newGame(31, 300, 300, { unlocked: [...DEF_KINDS] });
+    g.defenders = [];
+    for (const k of ['canon', 'laser', 'rayo', 'hielo', 'misil', 'pulso', 'mortero'] as const) addDefender(g, k);
+    expect(chipReady(g)).toBe(false);
+    g.defenders.slice(0, 3).forEach((d) => { d.evo = ['a', 'b']; });
+    g.level = 30;
+    expect(chipReady(g)).toBe(true);
+    let card;
+    for (let k = 0; k < 40 && !card; k++) card = offer(g, () => rand(g)).find((c) => c.kind === 'chip');
+    expect(card?.title).toContain('Prisma');
+    choose(g, card!);
+    expect(g.chips).toBe(2);
+    const crew = g.defenders.filter((d) => d.chip === 1);
+    expect(crew).toHaveLength(1);
+    expect(CHIPS[0].kinds).toContain(crew[0].kind);
+    expect(DEF_KINDS).not.toContain(crew[0].kind);
+    update(g, 1 / 30);
+    const P = chipPos(1);
+    expect(Math.hypot(crew[0].x - P.x, crew[0].y - P.y)).toBeLessThan(45);
+    let exclusive = false;
+    for (let k = 0; k < 100 && !exclusive; k++) exclusive = offer(g, () => rand(g)).some((c) => c.kind === 'new' && CHIPS[0].kinds.includes(c.id.slice(4) as never));
+    expect(exclusive).toBe(true);
+    play(g, 20);
+    expect(g.over || g.t > 20).toBe(true);
+    const back = restore(JSON.parse(JSON.stringify(snapshot(g))), 300);
+    expect(back.chips).toBe(2);
+    expect(back.defenders.filter((d) => d.chip === 1)).toHaveLength(g.defenders.filter((d) => d.chip === 1).length);
+    expect(MAX_CHIPS).toBe(5);
   });
 
   it('a saved wave restores the same build', () => {

@@ -2,7 +2,9 @@
 
 export type DefKind =
   | 'canon' | 'laser' | 'rayo' | 'pulso' | 'misil' | 'hielo' | 'cuchillas' | 'mortero'
-  | 'francotirador' | 'llamas' | 'gravedad' | 'drones' | 'acido' | 'bumeran' | 'minas' | 'cronos';
+  | 'francotirador' | 'llamas' | 'gravedad' | 'drones' | 'acido' | 'bumeran' | 'minas' | 'cronos'
+  // Exclusive to the extra chips
+  | 'refractor' | 'espejo' | 'foton' | 'martillo' | 'crisol' | 'forjador' | 'nanobots' | 'espora' | 'raiz' | 'singular' | 'eco' | 'segador';
 
 export interface Stats {
   dmg: number;
@@ -55,6 +57,8 @@ export interface Defender {
   pending: number;
   /** Legendary fusion: a second defender living in the same body. */
   fuse?: { kind: DefKind; stats: Stats; flags: Record<string, number>; evo: string[]; cd: number; spin: number; pending: number; lockId: number; lockT: number; aim: number };
+  /** Which chip it defends: 0 is the main one in the centre. */
+  chip?: number;
   /** Barrel kick after a shot (visual). */
   recoil?: number;
   /** Drones of a drone bay. */
@@ -247,6 +251,10 @@ export interface Game {
   syn: string[];
   /** Synergies whose two defenders sit side by side on the ring (stronger). */
   synAdj: string[];
+  /** Chips in play (1-5): the main one plus extra outposts around it. */
+  chips: number;
+  /** Sound cues since the last frame (not saved). */
+  sfx: string[];
   /** Defender types that can appear (Laboratorio unlocks). */
   unlocked: DefKind[];
   shake: number;

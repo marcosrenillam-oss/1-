@@ -10,6 +10,7 @@ import { RichText } from '../components/Glyph';
 import { IconArrow, IconCheck, IconClock, IconClose, IconCross } from '../components/Icons';
 import { ProgressBar } from '../components/ProgressBar';
 import { VisualBlock } from '../components/VisualBlock';
+import { sfx } from '../audio';
 import { haptic } from '../haptics';
 import { motionMs } from '../motion';
 
@@ -97,6 +98,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
     const out = onSubmit(response);
     if (out.kind === 'wrong') {
       haptic('error');
+      sfx('bad');
       if (out.result.timeout) setTimedOut(true);
       setPhase('wrong');
       setFlash('bad');
@@ -108,6 +110,7 @@ export function GameScreen({ run, onSubmit, onFinish, onAbandon, onStartTimer, o
       return;
     }
     haptic(out.kind === 'correct' && out.stageCleared ? 'heavy' : 'success');
+    sfx(out.kind === 'correct' && out.stageCleared ? 'level' : 'good');
     setEarned(out.earned);
     if (out.kind === 'victory') setFinal(out.result);
     if (out.kind === 'correct' && out.stageCleared) setPendingStage(out.stageCleared);

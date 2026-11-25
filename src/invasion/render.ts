@@ -1,4 +1,4 @@
-import { DEF_INFO, SYNERGIES } from './defenders';
+import { behOf, chipPos, CHIPS, DEF_INFO, SYNERGIES } from './defenders';
 import { CORE_R, ORBIT_R, RING_R, structs, VIRUS, WALL_R } from './sim';
 import type { DefKind, Defender, Game, Virus } from './types';
 
@@ -115,18 +115,21 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
   ctx.arc(0, 0, RING_R, 0, TAU);
   ctx.stroke();
   ctx.setLineDash([]);
-  // Links core → defenders
+  drawChipLinks(ctx, g, t);
+  // Links chip → its defenders
   ctx.lineWidth = 1.2;
   for (const d of g.defenders) {
+    const P = chipPos(d.chip ?? 0);
     ctx.strokeStyle = hexA(DEF_INFO[d.kind].color, 0.22);
     ctx.beginPath();
-    ctx.moveTo(0, 0);
+    ctx.moveTo(P.x, P.y);
     ctx.lineTo(d.x, d.y);
     ctx.stroke();
   }
 
   drawSynergyLinks(ctx, g, t);
   drawCore(ctx, g, col);
+  drawChips(ctx, g, t);
 
   // Mortar targets
   for (const s of g.shots) {
@@ -506,7 +509,8 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
   const t = g.t;
   const s = d.stats;
   // Orbiting blades (drawn around the defender)
-  if (d.kind === 'cuchillas') {
+  const beh = behOf(d.kind);
+  if (beh === 'cuchillas') {
     const n = Math.round(s.count);
     const rr = s.range * g.g.rangeMul;
     ctx.strokeStyle = hexA(c, 0.15);
@@ -530,7 +534,7 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
       ctx.restore();
     }
   }
-  if (d.kind === 'pulso' && d.flags.field) {
+  if (beh === 'pulso' && d.flags.field) {
     ctx.fillStyle = hexA(c, 0.07 + Math.sin(t * 6) * 0.03);
     ctx.beginPath();
     ctx.arc(d.x, d.y, s.range * g.g.rangeMul, 0, TAU);
@@ -587,15 +591,15 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
   // Barrels
   ctx.save();
   ctx.rotate(d.aim);
-  const barrels = ['canon', 'hielo', 'misil', 'mortero', 'acido'].includes(d.kind) ? Math.min(5, Math.max(1, Math.round(s.count))) : 0;
+  const barrels = ['canon', 'hielo', 'misil', 'mortero', 'acido'].includes(beh) ? Math.min(5, Math.max(1, Math.round(s.count))) : 0;
   ctx.fillStyle = c;
   for (let b = 0; b < barrels; b++) {
     const off = (b - (barrels - 1) / 2) * 3.4;
-    const len = (d.kind === 'mortero' ? R + 3 : R + 7 + tier * 2) - kick;
-    const wid = d.kind === 'mortero' ? 7 : d.kind === 'misil' ? 4 : 2.8;
+    const len = (beh === 'mortero' ? R + 3 : R + 7 + tier * 2) - kick;
+    const wid = beh === 'mortero' ? 7 : beh === 'misil' ? 4 : 2.8;
     ctx.fillRect(0, off - wid / 2, len, wid);
   }
-  if (d.kind === 'laser') {
+  if (beh === 'laser') {
     ctx.beginPath();
     ctx.moveTo(R + 8, 0);
     ctx.lineTo(R - 2, -4);
@@ -603,11 +607,11 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
     ctx.closePath();
     ctx.fill();
   }
-  if (d.kind === 'francotirador') {
+  if (beh === 'francotirador') {
     ctx.fillRect(0, -1.3, R + 16, 2.6);
     ctx.fillRect(R + 2, -3, 4, 6);
   }
-  if (d.kind === 'llamas') {
+  if (beh === 'llamas') {
     ctx.beginPath();
     ctx.moveTo(R - 2, -3);
     ctx.lineTo(R + 7, -6);
@@ -647,7 +651,7 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
     ctx.translate(R * 0.5, 0);
     glyph(ctx, d.fuse.kind, c2, R * 0.75, t);
     ctx.restore();
-  } else glyph(ctx, d.kind, c, R, t);
+  } else glyph(ctx, beh, c, R, t);
   ctx.fillStyle = c;
   pips(ctx, d, R);
   ctx.restore();
@@ -1123,4 +1127,85 @@ function drawSynergyLinks(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     ctx.setLineDash([]);
   }
   ctx.globalCompositeOperation = 'source-over';
+}
+
+/** Energy links from the main chip to the outposts. */
+function drawChipLinks(ctx: CanvasRenderingContext2D, g: Game, t: number) {
+  for (let k = 1; k < g.chips; k++) {
+    const P = chipPos(k);
+    const c = CHIPS[k - 1].color;
+    ctx.strokeStyle = hexA(c, 0.25);
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(P.x, P.y);
+    ctx.stroke();
+    ctx.strokeStyle = hexA(c, 0.8);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 10]);
+    ctx.lineDashOffset = -t * 60;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Packets travelling both ways
+    ctx.fillStyle = '#ffffff';
+    for (let j = 0; j < 2; j++) {
+      const f = (t * 0.6 + j * 0.5) % 1;
+      const ff = j ? 1 - f : f;
+      ctx.beginPath();
+      ctx.arc(P.x * ff, P.y * ff, 2.4, 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
+/** The extra chips: smaller bodies in their own colour, with their ring. */
+function drawChips(ctx: CanvasRenderingContext2D, g: Game, t: number) {
+  for (let k = 1; k < g.chips; k++) {
+    const P = chipPos(k);
+    const ch = CHIPS[k - 1];
+    const c = ch.color;
+    ctx.save();
+    ctx.translate(P.x, P.y);
+    ctx.strokeStyle = hexA(c, 0.2);
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 7]);
+    ctx.lineDashOffset = t * 40;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (ch.id === 'vacio') {
+      for (let r = 0; r < 3; r++) {
+        ctx.strokeStyle = hexA(c, 0.25 - r * 0.06);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 60 + r * 14, 30 + r * 8, -t * (1 + r * 0.4), 0, TAU);
+        ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, 44);
+    gl.addColorStop(0, hexA(c, 0.35));
+    gl.addColorStop(1, hexA(c, 0));
+    ctx.fillStyle = gl;
+    ctx.beginPath();
+    ctx.arc(0, 0, 44, 0, TAU);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.rotate(Math.sin(t * 0.8 + k) * 0.15 + Math.PI / 4);
+    const z = 13 * (1 + Math.sin(t * 3 + k) * 0.04);
+    ctx.fillStyle = '#121418';
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(-z, -z, z * 2, z * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = hexA(c, 0.5 + Math.sin(t * 4 + k) * 0.2);
+    ctx.fillRect(-z * 0.45, -z * 0.45, z * 0.9, z * 0.9);
+    ctx.restore();
+    ctx.fillStyle = hexA(c, 0.85);
+    ctx.font = '700 9px "Space Grotesk", Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(ch.name.toUpperCase(), P.x, P.y + 58);
+  }
 }

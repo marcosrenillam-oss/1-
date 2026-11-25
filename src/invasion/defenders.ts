@@ -5,7 +5,18 @@ export const stats = (o: Partial<Stats>): Stats => ({
   crit: 0.05, critMult: 2, execute: 0, homing: 0, split: 0, knock: 0, ...o,
 });
 
-export const DEF_INFO: Record<DefKind, { name: string; desc: string; color: string; base: () => Stats }> = {
+export interface DefInfo {
+  name: string;
+  desc: string;
+  color: string;
+  base: () => Stats;
+  /** Behaviour it runs (defaults to its own kind). */
+  beh?: DefKind;
+  flags?: Record<string, number>;
+  /** Extra chip it belongs to (exclusive defenders). */
+  chip?: ChipId;
+}
+export const DEF_INFO: Record<DefKind, DefInfo> = {
   canon: { name: 'Cañón', desc: 'Dispara balas al virus más cercano.', color: '#c8ff2e', base: () => stats({ dmg: 6, rate: 2.2, range: 150, speed: 470 }) },
   laser: { name: 'Láser', desc: 'Un haz continuo que quema sin parar.', color: '#ff4fa3', base: () => stats({ dmg: 9, rate: 1, range: 130 }) },
   rayo: { name: 'Rayo', desc: 'Descargas que saltan de virus en virus.', color: '#7db7ff', base: () => stats({ dmg: 11, rate: 0.9, range: 145, chain: 2 }) },
@@ -22,10 +33,51 @@ export const DEF_INFO: Record<DefKind, { name: string; desc: string; color: stri
   bumeran: { name: 'Bumerán', desc: 'Hojas que van y vuelven atravesándolo todo.', color: '#ffb347', base: () => stats({ dmg: 9, rate: 0.8, range: 170, speed: 300, pierce: 99 }) },
   minas: { name: 'Minador', desc: 'Siembra minas en el camino de los virus.', color: '#ff4f6d', base: () => stats({ dmg: 26, rate: 0.5, range: 200, splash: 40 }) },
   cronos: { name: 'Cronos', desc: 'Ralentiza el tiempo a su alrededor y congela con cada pulso.', color: '#7dffd8', base: () => stats({ dmg: 6, rate: 0.35, range: 115, slow: 0.35 }) },
+  // ── Chip Prisma ──
+  refractor: { chip: 'prisma', beh: 'laser', name: 'Refractor', desc: 'Tres haces que saltan entre virus.', color: '#7df9ff', base: () => stats({ dmg: 30, rate: 1, range: 160, count: 3, chain: 2 }) },
+  espejo: { chip: 'prisma', beh: 'canon', name: 'Espejo', desc: 'Balas de luz que rebotan de virus en virus.', color: '#bff7ff', base: () => stats({ dmg: 26, rate: 2.4, range: 170, speed: 640, bounce: 4, count: 2, spread: 0.2 }) },
+  foton: { chip: 'prisma', beh: 'francotirador', flags: { line: 1 }, name: 'Fotón', desc: 'Un rayo de luz que atraviesa todo en línea.', color: '#e6fdff', base: () => stats({ dmg: 160, rate: 0.5, range: 360, crit: 0.2, critMult: 2.5 }) },
+  // ── Chip Forja ──
+  martillo: { chip: 'forja', beh: 'pulso', name: 'Martillo', desc: 'Golpes sísmicos que aplastan y empujan.', color: '#ff9a3d', base: () => stats({ dmg: 70, rate: 0.7, range: 110, knock: 50 }) },
+  crisol: { chip: 'forja', beh: 'mortero', name: 'Crisol', desc: 'Lluvia de metal fundido que deja todo ardiendo.', color: '#ffb347', base: () => stats({ dmg: 80, rate: 0.6, range: 260, splash: 60, burn: 25, count: 2, spread: 0.6 }) },
+  forjador: { chip: 'forja', beh: 'llamas', flags: { pierceArmor: 1 }, name: 'Soplete de forja', desc: 'Fuego que funde el blindaje.', color: '#ff6a1f', base: () => stats({ dmg: 45, rate: 1, range: 120, spread: 1, burn: 20 }) },
+  // ── Chip Bio ──
+  nanobots: { chip: 'bio', beh: 'drones', name: 'Nanobots', desc: 'Un enjambre de diminutos cazadores.', color: '#5dffa8', base: () => stats({ dmg: 18, rate: 2.2, range: 240, count: 6, speed: 560 }) },
+  espora: { chip: 'bio', beh: 'acido', flags: { contagio: 1 }, name: 'Espora', desc: 'Nubes tóxicas que se contagian de virus en virus.', color: '#b6ff3d', base: () => stats({ dmg: 40, rate: 0.7, range: 220, splash: 50, slow: 0.3, count: 2, spread: 0.6 }) },
+  raiz: { chip: 'bio', beh: 'cronos', flags: { freeze: 1 }, name: 'Raíz', desc: 'Raíces que atrapan y estrangulan a los virus cercanos.', color: '#3dff9a', base: () => stats({ dmg: 50, rate: 0.5, range: 140, slow: 0.5 }) },
+  // ── Chip Vacío ──
+  singular: { chip: 'vacio', beh: 'gravedad', flags: { implode: 1 }, name: 'Singularidad', desc: 'Agujeros que lo tragan todo y estallan.', color: '#9d7bff', base: () => stats({ dmg: 45, rate: 0.35, range: 230, splash: 70, knock: 60, count: 2 }) },
+  eco: { chip: 'vacio', beh: 'rayo', flags: { nofall: 1 }, name: 'Eco', desc: 'Descargas del vacío que no pierden fuerza al saltar.', color: '#c48bff', base: () => stats({ dmg: 60, rate: 1, range: 190, chain: 6, count: 2 }) },
+  segador: { chip: 'vacio', beh: 'cuchillas', name: 'Segador', desc: 'Guadañas enormes girando alrededor del chip.', color: '#e0c3ff', base: () => stats({ dmg: 55, rate: 2.6, range: 62, count: 4, burn: 10 }) },
+};
+/** The behaviour a defender runs. */
+export const behOf = (k: DefKind): DefKind => DEF_INFO[k].beh ?? k;
+
+// ── Extra chips: outposts around the main one ──────────────────────────────
+export type ChipId = 'prisma' | 'forja' | 'bio' | 'vacio';
+export const CHIPS: { id: ChipId; name: string; color: string; ability: string; kinds: DefKind[] }[] = [
+  { id: 'prisma', name: 'Prisma', color: '#7df9ff', ability: 'Dispara haces de luz que se reparten entre los virus más cercanos.', kinds: ['refractor', 'espejo', 'foton'] },
+  { id: 'forja', name: 'Forja', color: '#ff9a3d', ability: 'Hace caer meteoritos ardientes sobre los virus.', kinds: ['martillo', 'crisol', 'forjador'] },
+  { id: 'bio', name: 'Bio', color: '#5dffa8', ability: 'Repara el núcleo y siembra nubes tóxicas.', kinds: ['nanobots', 'espora', 'raiz'] },
+  { id: 'vacio', name: 'Vacío', color: '#9d7bff', ability: 'Un vórtice permanente atrae y tritura a los virus que pasan.', kinds: ['singular', 'eco', 'segador'] },
+];
+export const MAX_CHIPS = 1 + CHIPS.length;
+/** Defenders per extra chip. */
+export const CHIP_SLOTS = 3;
+export const CHIP_D = 235;
+/** Where chip k (1-4) sits: above, below, left, right of the main one. */
+export function chipPos(k: number): { x: number; y: number } {
+  return [{ x: 0, y: 0 }, { x: 0, y: -CHIP_D }, { x: 0, y: CHIP_D }, { x: -CHIP_D, y: 0 }, { x: CHIP_D, y: 0 }][k] ?? { x: 0, y: 0 };
+}
+export const chipOfKind = (k: DefKind): number => {
+  const c = DEF_INFO[k].chip;
+  return c ? CHIPS.findIndex((x) => x.id === c) + 1 : 0;
 };
 /** Available from the start; the others are unlocked in the Laboratorio. */
 export const BASE_KINDS: DefKind[] = ['canon', 'laser', 'rayo', 'pulso', 'misil', 'hielo', 'cuchillas', 'mortero'];
-export const DEF_KINDS = Object.keys(DEF_INFO) as DefKind[];
+/** Main-chip defender types (the extra chips have their own). */
+export const DEF_KINDS = (Object.keys(DEF_INFO) as DefKind[]).filter((k) => !DEF_INFO[k].chip);
+export const ALL_KINDS = Object.keys(DEF_INFO) as DefKind[];
 
 export interface Evo {
   id: string;
@@ -189,11 +241,11 @@ export const SYNERGIES: Synergy[] = [
 ];
 
 // ── Fusions: two fully evolved defenders become one legendary ──────────────
-const NOUN: Record<DefKind, string> = {
+const NOUN: Partial<Record<DefKind, string>> = {
   canon: 'Cañón', laser: 'Láser', rayo: 'Rayo', pulso: 'Pulso', misil: 'Misil', hielo: 'Glaciar', cuchillas: 'Torbellino', mortero: 'Obús',
   francotirador: 'Rifle', llamas: 'Infierno', gravedad: 'Vórtice', drones: 'Enjambre', acido: 'Pantano', bumeran: 'Bumerán', minas: 'Campo minado', cronos: 'Reloj',
 };
-const ADJ: Record<DefKind, string> = {
+const ADJ: Partial<Record<DefKind, string>> = {
   canon: 'balístico', laser: 'fotónico', rayo: 'eléctrico', pulso: 'sísmico', misil: 'explosivo', hielo: 'helado', cuchillas: 'afilado', mortero: 'orbital',
   francotirador: 'certero', llamas: 'ígneo', gravedad: 'gravitatorio', drones: 'autónomo', acido: 'corrosivo', bumeran: 'giratorio', minas: 'traicionero', cronos: 'temporal',
 };
@@ -225,5 +277,5 @@ export function defenderName(d: Defender): string {
 }
 
 export function makeDefender(id: number, kind: DefKind): Defender {
-  return { id, kind, name: DEF_INFO[kind].name, lvl: 0, evo: [], stats: DEF_INFO[kind].base(), flags: {}, kills: 0, cd: 0.3, aim: 0, x: 0, y: 0, lockId: -1, lockT: 0, spin: 0, pending: 0 };
+  return { id, kind, chip: chipOfKind(kind), name: DEF_INFO[kind].name, lvl: 0, evo: [], stats: DEF_INFO[kind].base(), flags: { ...(DEF_INFO[kind].flags ?? {}) }, kills: 0, cd: 0.3, aim: 0, x: 0, y: 0, lockId: -1, lockT: 0, spin: 0, pending: 0 };
 }

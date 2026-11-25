@@ -664,3 +664,23 @@
   align-self: flex-start;
   color: var(--gray);
 }
+
+/* Sound toggles */
+.inv-sound-row {
+  display: flex;
+  gap: 8px;
+}
+.inv-toggle {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--anthracite);
+  color: var(--gray);
+  font-weight: 600;
+  font-size: 13.5px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.inv-toggle.is-on {
+  color: var(--lime);
+  box-shadow: inset 0 0 0 1.5px var(--lime);
+}
