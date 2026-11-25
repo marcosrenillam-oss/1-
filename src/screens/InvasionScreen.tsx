@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CATALOGUE_SIZE, choose, kindsOf, MAX_DEFENDERS, offer, placements, RARITY_LABEL, type Card, type Placement } from '../invasion/cards';
 import { LAB, labCost, labLevel, startOpts } from '../invasion/lab';
-import { DEF_INFO, defenderName, SYNERGIES } from '../invasion/defenders';
+import { DEF_EL, DEF_INFO, defenderName, ELEMENTS, SYNERGIES, ULTS } from '../invasion/defenders';
 import type { InvasionResult } from '../invasion/record';
 import { draw, drawBackground, type View } from '../invasion/render';
 import { BOSS_NAMES, datosFor, energyFor, newGame, rand, restore, snapshot, update, xpNeed, type InvasionSnapshot } from '../invasion/sim';
@@ -525,7 +525,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
                   <span className="inv-build-dot" />
                   <span className="inv-build-name">{defenderName(d)}</span>
                   <span className="inv-build-meta tnum">
-                    nv {d.lvl} · {fmt(d.kills)} virus
+                    <i style={{ color: ELEMENTS[DEF_EL[d.kind]].color }}>{ELEMENTS[DEF_EL[d.kind]].name}</i> · {ULTS[d.kind].name} · nv {d.lvl} · {fmt(d.kills)}
                   </span>
                 </li>
               ))}

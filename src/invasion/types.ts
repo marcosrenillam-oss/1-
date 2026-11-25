@@ -59,6 +59,12 @@ export interface Defender {
   fuse?: { kind: DefKind; stats: Stats; flags: Record<string, number>; evo: string[]; cd: number; spin: number; pending: number; lockId: number; lockT: number; aim: number };
   /** Which chip it defends: 0 is the main one in the centre. */
   chip?: number;
+  /** Ultimate charge (0-1). */
+  ult?: number;
+  /** Overdrive time left (ultimates that boost the defender). */
+  over?: number;
+  /** Reaper stacks. */
+  stacks?: number;
   /** Barrel kick after a shot (visual). */
   recoil?: number;
   /** Drones of a drone bay. */
@@ -97,6 +103,17 @@ export interface Virus {
   hidden: boolean;
   dead: boolean;
   hits: Record<number, number>;
+  /** Element (Pokémon-style weaknesses). */
+  el?: string;
+  /** Photon mark: detonates when it runs out. */
+  mark?: number;
+  markDmg?: number;
+  /** Nanobot infection (damage per second; jumps on death). */
+  infect?: number;
+  /** Rooted: cannot move. */
+  root?: number;
+  /** Rewound: walks backwards. */
+  rewind?: number;
 }
 
 export interface Shot {
@@ -128,6 +145,12 @@ export interface Shot {
   pa?: boolean;
   /** Acid shell: leaves a puddle. */
   acid?: boolean;
+  /** Prism orb: splits into elemental shards. */
+  prism?: boolean;
+  /** Saw disc: bounces off the screen edges. */
+  saw?: boolean;
+  /** Element override (prism shards). */
+  el?: string;
   hit: number[];
   /** Mortar shells: landing point and flight time. */
   tx?: number;
@@ -149,7 +172,7 @@ export type Fx =
 
 /** Ground effects: acid puddles, gravity wells, mines. */
 export interface Zone {
-  k: 'acid' | 'well' | 'mine';
+  k: 'acid' | 'well' | 'mine' | 'plant';
   x: number;
   y: number;
   r: number;

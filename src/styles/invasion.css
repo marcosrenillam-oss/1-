@@ -684,3 +684,7 @@
   color: var(--lime);
   box-shadow: inset 0 0 0 1.5px var(--lime);
 }
+.inv-build-meta i {
+  font-style: normal;
+  font-weight: 700;
+}

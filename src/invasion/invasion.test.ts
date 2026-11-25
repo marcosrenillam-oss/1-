@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CATALOGUE_SIZE, chipReady, choose, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
 import { buyLab } from './record';
 import { LAB, NEW_KINDS, startOpts } from './lab';
-import { BASE_KINDS, chipPos, CHIPS, DEF_KINDS, EVOS, evoOptions, MAX_CHIPS, SYNERGIES } from './defenders';
+import { ALL_KINDS, BASE_KINDS, chipPos, CHIPS, DEF_KINDS, effectiveness, EVOS, evoOptions, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
 import { finishInvasion } from './record';
 import { energyFor, newGame, rand, restore, snapshot, structs, update, WALL_R } from './sim';
 import type { Game } from './types';
@@ -234,6 +234,65 @@ describe('Invasión', () => {
     expect(back.chips).toBe(2);
     expect(back.defenders.filter((d) => d.chip === 1)).toHaveLength(g.defenders.filter((d) => d.chip === 1).length);
     expect(MAX_CHIPS).toBe(5);
+  });
+
+  it('every exclusive chip defender has its own new attack and works', () => {
+    for (const ch of CHIPS) {
+      for (const kind of ch.kinds) {
+        const g = newGame(41, 300, 400);
+        g.defenders = [];
+        g.chips = CHIPS.indexOf(ch) + 2;
+        const d = addDefender(g, kind);
+        expect(d.chip).toBe(CHIPS.indexOf(ch) + 1);
+        const hp0 = g.hp;
+        g.hp = 50;
+        for (let t = 0; t < 60 && !g.over; t += 1 / 30) update(g, 1 / 30);
+        const helped = g.kills > 0 || g.hp > 50 || g.g.shield > 0;
+        expect(helped, kind).toBe(true);
+        expect(hp0).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('every defender has a unique ultimate that fires', () => {
+    expect(new Set(Object.values(ULTS).map((u) => u.name)).size).toBe(ALL_KINDS.length);
+    for (const kind of ALL_KINDS) {
+      const g = newGame(42, 300, 400);
+      g.defenders = [];
+      g.chips = 5;
+      const d = addDefender(g, kind);
+      d.ult = 0.999;
+      let fired = false;
+      for (let t = 0; t < 20 && !fired; t += 1 / 30) {
+        update(g, 1 / 30);
+        fired = g.events.some((e) => e === `ult:${kind}`);
+        g.events.length = 0;
+      }
+      expect(fired, kind).toBe(true);
+    }
+  });
+
+  it('elements: super effective and not very effective', () => {
+    expect(effectiveness('fuego', 'bio')).toBeGreaterThan(1);
+    expect(effectiveness('fuego', 'fuego')).toBeLessThan(1);
+    expect(effectiveness('luz', 'electrico')).toBe(1);
+    expect(effectiveness(undefined, 'bio')).toBe(1);
+  });
+
+  it('a full extra chip can be upgraded: its three defenders improve at once', () => {
+    const g = newGame(43);
+    g.chips = 2;
+    for (const k of CHIPS[0].kinds) addDefender(g, k);
+    const before = g.defenders.filter((d) => d.chip === 1).map((d) => JSON.stringify(d.stats));
+    let card;
+    for (let k = 0; k < 200 && !card; k++) card = offer(g, () => rand(g)).find((c) => c.kind === 'chipup');
+    expect(card?.title).toContain('Prisma');
+    choose(g, card!);
+    const after = g.defenders.filter((d) => d.chip === 1);
+    after.forEach((d, i) => {
+      expect(JSON.stringify(d.stats)).not.toBe(before[i]);
+      expect(d.lvl).toBe(1);
+    });
   });
 
   it('a saved wave restores the same build', () => {

@@ -1,9 +1,9 @@
-import { behOf, CHIP_SLOTS, CHIPS, chipOfKind, DEF_INFO, DEF_KINDS, defenderName, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES } from './defenders';
+import { behOf, CHIP_MAX_LVL, CHIP_SLOTS, CHIPS, chipOfKind, DEF_EL, DEF_INFO, DEF_KINDS, defenderName, ELEMENTS, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
 import type { DefKind, Defender, Game, Stats } from './types';
 
 export const MAX_DEFENDERS = 10;
 
-export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip';
+export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip' | 'chipup';
 export type Rarity = 'comun' | 'rara' | 'epica' | 'legendaria';
 export const RARITY_LABEL: Record<Rarity, string> = { comun: 'Común', rara: 'Rara', epica: 'Épica', legendaria: 'Legendaria' };
 export interface Card {
@@ -250,8 +250,8 @@ function newDefenderCard(g: Game, kind: DefKind): Card {
   const syn = SYNERGIES.filter((s) => (s.a === kind && owned(g).has(s.b)) || (s.b === kind && owned(g).has(s.a)));
   return {
     key: `new-${kind}`, id: `new-${kind}`, kind: 'new', rarity: 'rara', title: info.name,
-    desc: info.desc + (syn.length ? ` Sinergia: ${syn.map((x) => x.name).join(', ')}.` : ''),
-    tag: info.chip ? `Chip ${CHIPS[chipOfKind(kind) - 1].name} · defensor ${g.defenders.filter((x) => x.chip === chipOfKind(kind)).length + 1}/${CHIP_SLOTS}` : `Nuevo defensor · ${mainRing(g).length + 1}/${MAX_DEFENDERS}`, color: info.color,
+    desc: `${info.desc} Definitivo: ${ULTS[kind].name}.` + (syn.length ? ` Sinergia: ${syn.map((x) => x.name).join(', ')}.` : ''),
+    tag: `${ELEMENTS[DEF_EL[kind]].name} · ` + (info.chip ? `Chip ${CHIPS[chipOfKind(kind) - 1].name} · defensor ${g.defenders.filter((x) => x.chip === chipOfKind(kind)).length + 1}/${CHIP_SLOTS}` : `Nuevo defensor · ${mainRing(g).length + 1}/${MAX_DEFENDERS}`), color: info.color,
     apply: (gg, at) => { addDefender(gg, kind, at); gg.g.horde *= 1.06; threaten(gg); },
   };
 }
@@ -317,9 +317,43 @@ function chipKindsAvailable(g: Game): DefKind[] {
   return out;
 }
 
+/** A full extra chip upgrades as one: its three defenders each get a random improvement. */
+const CHIP_UPS: { name: string; apply: (s: Stats) => void }[] = [
+  { name: 'Daño +30 %', apply: (s) => { s.dmg *= 1.3; } },
+  { name: 'Cadencia +25 %', apply: (s) => { s.rate *= 1.25; } },
+  { name: 'Alcance +20 %', apply: (s) => { s.range *= 1.2; s.splash *= 1.1; } },
+  { name: '+1 efecto', apply: (s) => { s.count += 1; } },
+  { name: 'Crítico +10 %', apply: (s) => { s.crit += 0.1; } },
+  { name: 'Área +25 %', apply: (s) => { s.splash = s.splash * 1.25 + 6; s.knock *= 1.2; } },
+];
+function chipUpgradeCard(g: Game, k: number, rnd: () => number): Card {
+  const ch = CHIPS[k - 1];
+  const id = `chipup-${ch.id}`;
+  const lvl = levelOf(g, id) + 1;
+  return {
+    key: id, id, kind: 'chipup', rarity: 'epica', title: `Mejorar chip ${ch.name}`,
+    desc: 'Sus tres defensores mejoran a la vez, cada uno con una mejora al azar. Su habilidad también se hace más fuerte.',
+    tag: `Chip ${ch.name} · nivel ${lvl}/${CHIP_MAX_LVL}`, color: ch.color,
+    apply: (gg) => {
+      for (const d of gg.defenders.filter((x) => x.chip === k)) {
+        const up = CHIP_UPS[Math.floor(rnd() * CHIP_UPS.length)];
+        up.apply(d.stats);
+        d.lvl += 1;
+        gg.fx.push({ k: 'txt', x: d.x, y: d.y - 16, s: up.name, life: 1.4, max: 1.4, c: ch.color });
+        gg.fx.push({ k: 'ring', x: d.x, y: d.y, r0: 4, r1: 30, life: 0.5, max: 0.5, c: ch.color, w: 3 });
+      }
+      threaten(gg);
+    },
+  };
+}
+
 function cardFor(g: Game, rnd: () => number): Card | null {
   const n = mainRing(g).length;
   const r = rnd();
+  for (let k = 1; k < g.chips; k++) {
+    const full = g.defenders.filter((d) => d.chip === k).length >= CHIP_SLOTS;
+    if (full && levelOf(g, `chipup-${CHIPS[k - 1].id}`) < CHIP_MAX_LVL && rnd() < 0.18) return chipUpgradeCard(g, k, rnd);
+  }
   const extra = chipKindsAvailable(g);
   if (extra.length && rnd() < 0.3) return newDefenderCard(g, extra[Math.floor(rnd() * extra.length)]);
   const kinds = availableKinds(g);
@@ -430,7 +464,7 @@ export function choose(g: Game, c: Card, at?: number) {
   const d = c.kind === 'new' ? g.defenders.find((x) => x.id === g.nextId - 1) : g.defenders.find((x) => x.id === c.target);
   const gl = GLOBAL_CARDS.find((x) => x.id === c.id);
   const [x, y] = d ? [d.x, d.y] : gl?.struct ? [0, -(c.id === 'aura' ? 70 : 104)] : [0, 0];
-  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip';
+  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip' || c.kind === 'chipup';
   g.fx.push({ k: 'ring', x, y, r0: 6, r1: big ? 90 : 44, life: big ? 0.8 : 0.5, max: big ? 0.8 : 0.5, c: c.color, w: big ? 5 : 3 });
   g.fx.push({ k: 'flash', x, y, r: big ? 50 : 24, life: 0.3, max: 0.3, c: c.color });
   g.fx.push({ k: 'txt', x, y: y - 18, s: c.title, life: 1.4, max: 1.4, c: c.color });
