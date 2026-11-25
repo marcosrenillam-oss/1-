@@ -213,6 +213,37 @@ export function sfx(name: string) {
     case 'bad':
       tone(220, 0.35, 'square', 0.06, { to: 110 });
       return;
+    case 'link':
+      if (!gate('link', 0.06)) return;
+      tone(440, 0.12, 'triangle', 0.07, { to: 880 });
+      return;
+    case 'elink':
+      if (!gate('elink', 0.15)) return;
+      tone(300, 0.1, 'square', 0.025, { to: 200 });
+      return;
+    case 'cut':
+      noise(0.12, 0.14, { type: 'highpass', freq: 3000 });
+      tone(900, 0.1, 'sawtooth', 0.04, { to: 300 });
+      return;
+    case 'capture':
+      [523, 784, 1047].forEach((f, i) => tone(f, 0.2, 'triangle', 0.08, { at: i * 0.05 }));
+      return;
+    case 'ecapture':
+      if (!gate('ecapture', 0.2)) return;
+      tone(200, 0.2, 'square', 0.04, { to: 150 });
+      return;
+    case 'lost':
+      tone(330, 0.4, 'sawtooth', 0.08, { to: 110 });
+      return;
+    case 'clashwin':
+      noise(0.2, 0.12, { type: 'bandpass', freq: 1200 });
+      return;
+    case 'win':
+      [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.35, 'triangle', 0.09, { at: i * 0.08 }));
+      return;
+    case 'lose':
+      [392, 330, 262].forEach((f, i) => tone(f, 0.45, 'triangle', 0.09, { at: i * 0.18 }));
+      return;
     case 'tap':
       if (!gate('tap', 0.03)) return;
       tone(1800, 0.03, 'sine', 0.03);

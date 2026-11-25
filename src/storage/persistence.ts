@@ -76,6 +76,13 @@ export interface InvasionRecord {
 }
 export const emptyInvasion = (): InvasionRecord => ({ played: 0, bestWave: 0, bestKills: 0, totalKills: 0, bosses: 0, datos: 0, lab: {}, run: null });
 
+/** «Enlace»: stars (1-3) and best time per level. */
+export interface EnlaceRecord {
+  stars: Record<number, number>;
+  best: Record<number, number>;
+}
+export const emptyEnlace = (): EnlaceRecord => ({ stars: {}, best: {} });
+
 export interface SaveData {
   version: 2;
   lastMode: GameMode;
@@ -86,6 +93,7 @@ export interface SaveData {
   /** «Tu Núcleo»: cosmetic chip built with energy. */
   core: CoreState;
   invasion: InvasionRecord;
+  enlace: EnlaceRecord;
   run: ActiveRun | null;
 }
 
@@ -107,6 +115,7 @@ export function emptySave(): SaveData {
     adventure: emptyAdventure(),
     core: emptyCore(),
     invasion: emptyInvasion(),
+    enlace: emptyEnlace(),
     run: null,
   };
 }
@@ -182,6 +191,10 @@ export function normalize(raw: unknown): SaveData {
   }
   const a = obj(r.adventure);
   base.core = normalizeCore(r.core);
+  const en = obj(r.enlace);
+  const nums = (v: unknown, lo: number, hi: number) =>
+    Object.fromEntries(Object.entries(obj(v)).filter(([k, x]) => Number.isInteger(+k) && typeof x === 'number' && x >= lo && x <= hi)) as Record<number, number>;
+  base.enlace = { stars: nums(en.stars, 1, 3), best: nums(en.best, 0, 1e6) };
   const inv = obj(r.invasion);
   const snap = obj(inv.run);
   base.invasion = {

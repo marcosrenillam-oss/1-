@@ -368,6 +368,41 @@ await settle(1400);
 await shot('18-home-se');
 await noHorizontalOverflow('home SE');
 
+// ── 8b. Enlace ───────────────────────────────────────────────────────────
+await page.getByRole('button', { name: /^Enlace/ }).click();
+await settle(900);
+check(await page.locator('.enl-level').count() === 25, 'enlace: sector shows 25 levels');
+await page.getByRole('button', { name: /Jugar nivel 1-1/ }).click();
+await settle(1200);
+{
+  const pos = await page.evaluate(() => {
+    const g = window.__enl.current; const v = window.__enlView.current; const S = window.__enlScreen;
+    const me = g.nodes.find((n) => n.owner === 1);
+    const t = g.nodes.filter((n) => n.owner === 0).sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y))[0];
+    return [S(v, me.x, me.y), S(v, t.x, t.y), t.id];
+  });
+  await page.mouse.move(pos[0].x, pos[0].y);
+  await page.mouse.down();
+  await page.mouse.move(pos[1].x, pos[1].y, { steps: 8 });
+  await page.mouse.up();
+  let captured = false;
+  for (let k = 0; k < 24 && !captured; k++) {
+    await settle(500);
+    captured = await page.evaluate((id) => window.__enl.current.nodes.find((n) => n.id === id).owner === 1, pos[2]);
+  }
+  check(captured, 'enlace: dragging lays a trace and captures a chip');
+  await shot('18b-enlace');
+}
+await page.evaluate(() => { const g = window.__enl.current; g.nodes.forEach((n) => { if (n.owner !== 1) { n.owner = 1; } }); g.links = []; });
+await settle(1500);
+check(await page.getByRole('button', { name: 'Siguiente nivel' }).isVisible(), 'enlace: win screen with next level');
+s = await save();
+check(s.enlace.stars[1] >= 1 && s.core.energy > 0, 'enlace: stars and energy saved');
+await page.getByRole('button', { name: 'Ver niveles' }).click();
+await settle(700);
+await page.getByRole('button', { name: 'Inicio' }).click();
+await settle(900);
+
 // ── 9. Landscape ─────────────────────────────────────────────────────────
 await page.setViewportSize({ width: 852, height: 393 });
 await settle(800);

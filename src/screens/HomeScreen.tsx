@@ -4,8 +4,10 @@ import { COLORS, tierOf } from '../engine/core';
 import type { SaveData } from '../storage/persistence';
 import { Chip } from '../components/Chip';
 import { Logo } from '../components/Logo';
+import { nextLevel, totalStars } from '../enlace/record';
+import { levelInfo, TOTAL_LEVELS } from '../enlace/levels';
 
-export type HubTarget = 'questions' | 'invasion' | 'core';
+export type HubTarget = 'questions' | 'invasion' | 'enlace' | 'core';
 
 interface Props {
   save: SaveData;
@@ -40,6 +42,17 @@ const QuestionsArt = () => (
     <path d="M16 34 L14 42 L24 34" fill="currentColor" />
     <path d="M19.5 17.5a4.5 4.5 0 1 1 6.3 4.1c-1.2.6-1.8 1.4-1.8 2.6" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     <circle cx="24" cy="29" r="1.9" fill="currentColor" />
+  </svg>
+);
+
+const NetArt = () => (
+  <svg viewBox="0 0 48 48">
+    <g stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none">
+      <path d="M12 34 L24 14 L36 32 Z" strokeDasharray="3 4" />
+    </g>
+    <rect x="6" y="28" width="12" height="12" rx="3" fill="#121418" stroke="currentColor" strokeWidth="2.6" />
+    <rect x="18" y="8" width="12" height="12" rx="3" fill="currentColor" />
+    <rect x="30" y="26" width="12" height="12" rx="3" fill="#121418" stroke="#ff3b5c" strokeWidth="2.6" />
   </svg>
 );
 
@@ -125,6 +138,16 @@ export function HomeScreen({ save, onOpen }: Props) {
         />
         <Branch
           i={2}
+          label="Estrategia"
+          title="Enlace"
+          sub={`Nivel ${levelInfo(nextLevel(save)).name} · ${totalStars(save)}/${TOTAL_LEVELS * 3} ★`}
+          badge={Object.keys(save.enlace.stars).length === 0 ? 'Nuevo' : undefined}
+          art={<NetArt />}
+          accent="#7db7ff"
+          onClick={() => onOpen('enlace')}
+        />
+        <Branch
+          i={3}
           label={`Chip nivel ${core.chip} · ${tierOf(core.chip).name}`}
           title="Tu Núcleo"
           sub={`Construye y evoluciona · ⚡ ${core.energy.toLocaleString('es-ES')}`}

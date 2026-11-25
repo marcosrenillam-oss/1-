@@ -8,6 +8,7 @@ import './styles/home.css';
 import './styles/game.css';
 import './styles/result.css';
 import './styles/invasion.css';
+import './styles/enlace.css';
 import './styles/fit.css';
 import './styles/landscape.css';
 

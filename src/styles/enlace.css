@@ -1,0 +1,211 @@
+/* ── Enlace ───────────────────────────────────────────────────────────── */
+.screen--enlace {
+  padding: 0;
+}
+.enl-map {
+  padding: calc(var(--sat) + 14px) max(var(--gutter), var(--sar)) calc(var(--sab) + 18px) max(var(--gutter), var(--sal));
+  gap: 12px;
+}
+.enl-lead {
+  font-size: 14px;
+  color: var(--gray);
+}
+.enl-sectors {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  touch-action: pan-x;
+}
+.enl-sectors::-webkit-scrollbar {
+  display: none;
+}
+.enl-sector {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--anthracite);
+  color: var(--gray);
+  font-size: 13px;
+  font-weight: 600;
+}
+.enl-sector b {
+  font-family: var(--font-display);
+  color: var(--white);
+}
+.enl-sector.is-active {
+  background: var(--lime);
+  color: var(--lime-ink);
+}
+.enl-sector.is-active b {
+  color: var(--lime-ink);
+}
+.enl-sector:disabled {
+  opacity: 0.4;
+}
+.enl-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.enl-level {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 14px;
+  background: var(--anthracite);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 18px;
+  font-weight: 700;
+  transition: transform 0.15s var(--ease-out);
+}
+.enl-level:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.enl-level:disabled {
+  opacity: 0.35;
+}
+.enl-level.is-done {
+  box-shadow: inset 0 0 0 1px rgba(200, 255, 46, 0.35);
+}
+.enl-level.is-next {
+  box-shadow: inset 0 0 0 2px var(--lime), 0 0 18px -4px var(--lime-glow);
+  animation: chipPulse 1.6s ease-in-out infinite;
+}
+.enl-lock {
+  font-size: 10px;
+}
+.enl-stars {
+  display: inline-flex;
+  gap: 1px;
+  color: rgba(255, 255, 255, 0.18);
+}
+.enl-stars .is-on {
+  color: #ffd60a;
+}
+.enl-play {
+  margin-top: auto;
+}
+.enl {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.enl-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.enl-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: calc(var(--sat) + 8px) max(14px, var(--sar)) 0 max(14px, var(--sal));
+  pointer-events: none;
+}
+.enl-hud > * {
+  pointer-events: auto;
+}
+.enl-hud-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 17px;
+  font-weight: 700;
+}
+.enl-hud-title small {
+  font-size: 11px;
+  color: var(--gray);
+  font-weight: 500;
+}
+.enl-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 16px;
+  font-weight: 700;
+}
+.enl-clock small {
+  font-size: 10px;
+  color: #ffd60a;
+  font-weight: 600;
+}
+.enl-clock.is-late small {
+  color: var(--gray-2);
+}
+.enl-hint {
+  position: absolute;
+  left: max(16px, var(--sal));
+  right: max(16px, var(--sar));
+  top: calc(var(--sat) + 62px);
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(20, 22, 26, 0.94);
+  box-shadow: inset 0 0 0 1px var(--lime);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  animation: invSheet 0.4s var(--ease-spring) both;
+}
+.enl-legend {
+  position: absolute;
+  left: max(14px, var(--sal));
+  bottom: calc(var(--sab) + 10px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--gray-2);
+  pointer-events: none;
+}
+.enl-legend b {
+  color: var(--gray);
+}
+.enl-result-stars {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+@media (orientation: landscape) and (min-width: 600px) {
+  .enl-map {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-content: start;
+  }
+  .enl-map > .map-top,
+  .enl-map > .enl-sectors {
+    grid-column: 1 / -1;
+  }
+  .enl-map > .enl-grid {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+  }
+  .enl-map > .enl-lead,
+  .enl-map > .enl-play {
+    grid-column: 1;
+  }
+  .enl-level {
+    aspect-ratio: auto;
+    min-height: 44px;
+  }
+}

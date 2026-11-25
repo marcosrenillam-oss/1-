@@ -7,6 +7,8 @@ import { GameScreen } from './screens/GameScreen';
 import { HomeScreen, type HubTarget } from './screens/HomeScreen';
 import { QuestionsScreen } from './screens/QuestionsScreen';
 import { InvasionScreen } from './screens/InvasionScreen';
+import { EnlaceScreen } from './screens/EnlaceScreen';
+import { finishLevel } from './enlace/record';
 import { buyLab, finishInvasion } from './invasion/record';
 import type { InvasionSnapshot } from './invasion/sim';
 import type { Game } from './invasion/types';
@@ -24,6 +26,7 @@ type Screen =
   | { name: 'core' }
   | { name: 'questions' }
   | { name: 'invasion' }
+  | { name: 'enlace' }
   | { name: 'map'; justPassed?: { world: number; level: number } | null }
   | { name: 'game' }
   | { name: 'result'; result: RunResult }
@@ -93,6 +96,12 @@ export default function App() {
     const next = buyLab(saveRef.current, id);
     if (next) commit(next);
     return !!next;
+  }, [commit]);
+
+  const enlaceFinish = useCallback((n: number, won: boolean, time: number) => {
+    const out = finishLevel(saveRef.current, n, won, time);
+    commit(out.save);
+    return out.result;
   }, [commit]);
 
   const startGame = useCallback((m: GameMode, p: Play) => {
@@ -180,6 +189,8 @@ export default function App() {
         onHome={() => go({ name: 'home' })}
       />
     );
+  } else if (screen.name === 'enlace') {
+    content = <EnlaceScreen save={save} onFinish={enlaceFinish} onHome={() => go({ name: 'home' })} />;
   } else if (screen.name === 'core') {
     content = <CoreScreen core={save.core} onChange={changeCore} onHome={() => go({ name: 'home' })} />;
   } else if (screen.name === 'map') {
