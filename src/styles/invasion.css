@@ -630,3 +630,37 @@
 .inv-lab-pips i.is-on {
   background: #7db7ff;
 }
+
+/* Placement of a new defender */
+.inv-place-hint {
+  margin-top: -4px;
+  font-size: 13px;
+  color: var(--gray);
+}
+.inv-place {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.inv-place-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.inv-place .inv-card-title {
+  font-size: 15.5px;
+}
+.inv-place .inv-card-desc.is-syn {
+  color: var(--c);
+  font-weight: 600;
+}
+.inv-ring-preview {
+  flex: none;
+  width: 58px;
+  height: 58px;
+}
+.inv-place-back {
+  align-self: flex-start;
+  color: var(--gray);
+}

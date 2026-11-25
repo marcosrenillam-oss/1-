@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOGUE_SIZE, choose, fusablePairs, GLOBAL_CARDS, MAX_DEFENDERS, offer, PACT_CARDS, STAT_CARDS, addDefender, kindsOf } from './cards';
+import { CATALOGUE_SIZE, choose, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
 import { buyLab } from './record';
 import { LAB, NEW_KINDS, startOpts } from './lab';
 import { BASE_KINDS, DEF_KINDS, EVOS, evoOptions, SYNERGIES } from './defenders';
 import { finishInvasion } from './record';
-import { energyFor, newGame, rand, restore, snapshot, update, WALL_R } from './sim';
+import { energyFor, newGame, rand, restore, snapshot, structs, update, WALL_R } from './sim';
 import type { Game } from './types';
 import { emptySave, normalize } from '../storage/persistence';
 
@@ -155,6 +155,54 @@ describe('Invasión', () => {
     save.invasion.datos = 0;
     expect(buyLab(save, 'dano')).toBeNull();
     expect(LAB.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('every pick of a structure changes it, up to its top level; then it can ascend', () => {
+    const g = newGame(21);
+    const spikes = GLOBAL_CARDS.find((c) => c.id === 'espinas')!;
+    const asCard = (): Card => ({ key: 'espinas', id: 'espinas', kind: 'global', rarity: 'epica', title: 'Espinas', desc: '', tag: '', color: '#fff', apply: (gg) => spikes.apply(gg) });
+    let prev = JSON.stringify(structs(g));
+    for (let k = 0; k < spikes.max!; k++) {
+      choose(g, asCard());
+      const now = JSON.stringify(structs(g));
+      expect(now, `level ${k + 1}`).not.toBe(prev);
+      prev = now;
+    }
+    expect(levelOf(g, 'espinas')).toBe(spikes.max);
+    let sawSpikes = false;
+    let sawAsc = false;
+    for (let k = 0; k < 300; k++) {
+      for (const c of offer(g, () => rand(g))) {
+        if (c.id === 'espinas') sawSpikes = true;
+        if (c.id === 'asc-espinas') sawAsc = true;
+      }
+    }
+    expect(sawSpikes).toBe(false);
+    expect(sawAsc).toBe(true);
+    for (const c of GLOBAL_CARDS) expect(c.max, c.id).toBeGreaterThan(0);
+    for (const c of GLOBAL_CARDS.filter((x) => x.next)) for (let l = 1; l <= c.max!; l++) expect(c.next!(l), `${c.id} ${l}`).toBeTruthy();
+  });
+
+  it('a new defender goes where you choose; neighbours make a synergy stronger', () => {
+    const g = newGame(22);
+    g.defenders = [];
+    for (const k of ['canon', 'laser', 'hielo', 'misil'] as const) addDefender(g, k);
+    const opts = placements(g, 'rayo');
+    expect(opts.length).toBeGreaterThan(1);
+    expect(opts[0].syn).toContain('Superconductor');
+    const card = offer(g, () => 0).find((c) => c.kind === 'new');
+    const rayo: Card = card ? { ...card, id: 'new-rayo' } : { key: 'new-rayo', id: 'new-rayo', kind: 'new', rarity: 'rara', title: 'Rayo', desc: '', tag: '', color: '#fff', apply: (gg, at) => { addDefender(gg, 'rayo', at); } };
+    choose(g, { ...rayo, apply: (gg, at) => { addDefender(gg, 'rayo', at); } }, opts[0].at);
+    const i = g.defenders.findIndex((d) => d.kind === 'rayo');
+    const n = g.defenders.length;
+    expect([g.defenders[(i + 1) % n].kind, g.defenders[(i - 1 + n) % n].kind]).toContain('hielo');
+    expect(g.synAdj).toContain('superconductor');
+    // Far from each other: active but not reinforced.
+    const h = newGame(23);
+    h.defenders = [];
+    for (const k of ['hielo', 'canon', 'rayo', 'laser'] as const) addDefender(h, k);
+    expect(h.syn).toContain('superconductor');
+    expect(h.synAdj).not.toContain('superconductor');
   });
 
   it('a saved wave restores the same build', () => {

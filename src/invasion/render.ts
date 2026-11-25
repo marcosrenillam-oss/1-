@@ -1,5 +1,5 @@
 import { DEF_INFO, SYNERGIES } from './defenders';
-import { CORE_R, ORBIT_R, RING_R, VIRUS, WALL_R } from './sim';
+import { CORE_R, ORBIT_R, RING_R, structs, VIRUS, WALL_R } from './sim';
 import type { DefKind, Defender, Game, Virus } from './types';
 
 export interface View {
@@ -36,19 +36,25 @@ export function drawBackground(c: HTMLCanvasElement, v: View, dpr: number) {
   ctx.lineWidth = 1.5;
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  traces.length = 0;
   for (let k = 0; k < 18; k++) {
     const a = (k / 18) * TAU + rnd() * 0.2;
     let x = cx + Math.cos(a) * RING_R * 1.6 * v.scale;
     let y = cy + Math.sin(a) * RING_R * 1.6 * v.scale;
+    const pts = [x, y];
     ctx.beginPath();
     ctx.moveTo(x, y);
-    for (let s = 0; s < 4; s++) {
+    // Long enough to reach the screen edges in any orientation.
+    const steps = Math.ceil((Math.max(v.w, v.h) * 0.6) / (75 * v.scale));
+    for (let s = 0; s < steps; s++) {
       const len = (40 + rnd() * 70) * v.scale;
       const turn = s % 2 ? (rnd() < 0.5 ? -1 : 1) * 0.6 : 0;
       x += Math.cos(a + turn) * len;
       y += Math.sin(a + turn) * len;
       ctx.lineTo(x, y);
+      pts.push(x, y);
     }
+    traces.push(pts);
     ctx.stroke();
     ctx.fillStyle = hexA(v.color, 0.12);
     ctx.beginPath();
@@ -56,6 +62,10 @@ export function drawBackground(c: HTMLCanvasElement, v: View, dpr: number) {
     ctx.fill();
   }
 }
+
+/** Background circuit traces (screen px), animated by the living map. */
+const traces: number[][] = [];
+const motes = Array.from({ length: 36 }, (_, i) => ({ x: (i * 0.618) % 1, y: (i * 0.377) % 1, s: 0.6 + ((i * 7) % 5) / 4, v: 0.004 + ((i * 3) % 7) / 1200 }));
 
 export function hexA(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -66,6 +76,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(bg, 0, 0);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  livingMap(ctx, g, v);
   const sx = g.shake ? (Math.random() - 0.5) * g.shake : 0;
   const sy = g.shake ? (Math.random() - 0.5) * g.shake : 0;
   ctx.save();
@@ -87,7 +98,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
     ctx.setLineDash([3, 7]);
     ctx.lineDashOffset = -t * 30;
     ctx.beginPath();
-    ctx.arc(0, 0, 82, 0, TAU);
+    ctx.arc(0, 0, 70 + 10 * g.g.aura, 0, TAU);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -177,29 +188,69 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
   for (const f of g.fx) {
     const a = Math.max(0, f.life / f.max);
     switch (f.k) {
-      case 'beam':
-        ctx.strokeStyle = hexA(f.c, 0.35);
-        ctx.lineWidth = f.w * 3;
+      case 'beam': {
+        const pulse = 1 + Math.sin(t * 50 + f.x1) * 0.25;
+        const fade = f.max > 0.1 ? a : 1;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(f.x1, f.y1);
         ctx.lineTo(f.x2, f.y2);
+        ctx.strokeStyle = hexA(f.c, 0.16 * fade);
+        ctx.lineWidth = f.w * 6 * pulse;
         ctx.stroke();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = f.w * 0.6;
+        ctx.strokeStyle = hexA(f.c, 0.5 * fade);
+        ctx.lineWidth = f.w * 2.4 * pulse;
+        ctx.stroke();
+        ctx.strokeStyle = hexA('#ffffff', 0.95 * fade);
+        ctx.lineWidth = Math.max(1, f.w * 0.7);
         ctx.stroke();
         break;
+      }
       case 'bolt': {
-        ctx.strokeStyle = hexA(f.c, a);
-        ctx.lineWidth = 3.5;
+        // Lightning flickers: inner points jump every frame, with forks.
+        const w = f.w ?? 3;
+        const p = f.pts.slice();
+        for (let i = 2; i < p.length - 2; i++) p[i] += (Math.random() - 0.5) * 7;
+        const path = () => {
+          ctx.beginPath();
+          ctx.moveTo(p[0], p[1]);
+          for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+        };
         ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(f.pts[0], f.pts[1]);
-        for (let i = 2; i < f.pts.length; i += 2) ctx.lineTo(f.pts[i], f.pts[i + 1]);
+        ctx.lineCap = 'round';
+        path();
+        ctx.strokeStyle = hexA(f.c, 0.18 * a);
+        ctx.lineWidth = w * 4.5;
+        ctx.stroke();
+        ctx.strokeStyle = hexA(f.c, 0.85 * a);
+        ctx.lineWidth = w * 1.4;
         ctx.stroke();
         ctx.strokeStyle = hexA('#ffffff', a);
-        ctx.lineWidth = 1.2;
+        ctx.lineWidth = Math.max(1, w * 0.45);
         ctx.stroke();
+        ctx.strokeStyle = hexA(f.c, 0.7 * a);
+        ctx.lineWidth = Math.max(1, w * 0.5);
+        for (let i = 4; i < p.length - 2; i += 6) {
+          const ang = Math.random() * TAU;
+          const len = 8 + Math.random() * 14;
+          ctx.beginPath();
+          ctx.moveTo(p[i], p[i + 1]);
+          ctx.lineTo(p[i] + Math.cos(ang) * len * 0.5 + (Math.random() - 0.5) * 6, p[i + 1] + Math.sin(ang) * len * 0.5 + (Math.random() - 0.5) * 6);
+          ctx.lineTo(p[i] + Math.cos(ang) * len, p[i + 1] + Math.sin(ang) * len);
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'flash': {
+        const r = f.r * (1.2 - a * 0.4);
+        const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+        gr.addColorStop(0, `rgba(255,255,255,${0.9 * a})`);
+        gr.addColorStop(0.35, hexA(f.c, 0.6 * a));
+        gr.addColorStop(1, hexA(f.c, 0));
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, r, 0, TAU);
+        ctx.fill();
         break;
       }
       case 'ring': {
@@ -238,11 +289,18 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
 
   // Floating crit numbers
   ctx.textAlign = 'center';
-  ctx.font = '700 11px "Space Grotesk", Inter, sans-serif';
   for (const f of g.fx) {
     if (f.k !== 'txt') continue;
-    ctx.fillStyle = hexA(f.c, Math.min(1, (f.life / f.max) * 1.6));
-    ctx.fillText(f.s, f.x, f.y);
+    const big = f.max > 1;
+    ctx.font = big ? '700 14px "Space Grotesk", Inter, sans-serif' : '700 11px "Space Grotesk", Inter, sans-serif';
+    const al = Math.min(1, (f.life / f.max) * 1.6);
+    if (big) {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(11,12,14,${0.8 * al})`;
+      ctx.strokeText(f.s, f.x, f.y - (1 - f.life / f.max) * 10);
+    }
+    ctx.fillStyle = hexA(f.c, al);
+    ctx.fillText(f.s, f.x, f.y - (big ? (1 - f.life / f.max) * 10 : 0));
   }
   ctx.restore();
 
@@ -380,6 +438,14 @@ function drawVirus(ctx: CanvasRenderingContext2D, v: Virus, t: number) {
     ctx.arc(-r * 0.3, r * 0.3, r * 0.18, 0, TAU);
     ctx.fill();
   }
+  if (v.t > 25 && !v.hidden) {
+    // Enraged: red pulsing halo
+    ctx.strokeStyle = `rgba(255,40,60,${0.45 + Math.sin(t * 12 + v.id) * 0.25})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.25, 0, TAU);
+    ctx.stroke();
+  }
   if (v.flash > 0) {
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, TAU);
@@ -435,7 +501,8 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
   const c = DEF_INFO[d.kind].color;
   const c2 = d.fuse ? DEF_INFO[d.fuse.kind].color : c;
   const tier = d.fuse ? 3 : d.evo.length;
-  const R = 9 + tier * 2;
+  const R = 9 + tier * 2 + Math.min(4, d.lvl * 0.35);
+  const kick = (d.recoil ?? 0) * 3;
   const t = g.t;
   const s = d.stats;
   // Orbiting blades (drawn around the defender)
@@ -524,7 +591,7 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
   ctx.fillStyle = c;
   for (let b = 0; b < barrels; b++) {
     const off = (b - (barrels - 1) / 2) * 3.4;
-    const len = d.kind === 'mortero' ? R + 3 : R + 7 + tier * 2;
+    const len = (d.kind === 'mortero' ? R + 3 : R + 7 + tier * 2) - kick;
     const wid = d.kind === 'mortero' ? 7 : d.kind === 'misil' ? 4 : 2.8;
     ctx.fillRect(0, off - wid / 2, len, wid);
   }
@@ -721,107 +788,221 @@ function pips(ctx: CanvasRenderingContext2D, d: Defender, R: number) {
 // ── Structures, zones, drones and synergy links ───────────────────────────
 function drawWall(ctx: CanvasRenderingContext2D, g: Game, col: string, t: number) {
   const G = g.g;
+  const S = structs(g);
+  if (S.auraR > 0) {
+    const gr = ctx.createRadialGradient(0, 0, CORE_R, 0, 0, S.auraR);
+    gr.addColorStop(0, hexA(col, 0));
+    gr.addColorStop(0.85, hexA(col, 0.05 + G.aura * 0.015 + Math.sin(t * 4) * 0.02));
+    gr.addColorStop(1, hexA(col, 0));
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.arc(0, 0, S.auraR, 0, TAU);
+    ctx.fill();
+  }
   if (G.wallMax <= 0 && G.thorns <= 0) return;
+  const wl = g.taken.filter((x) => x === 'muro').length;
+  const tierCol = wl >= 7 ? '#ffd60a' : wl >= 4 ? '#9fb8d6' : col;
   const segs = 36;
   const frac = G.wallMax > 0 ? G.wall / G.wallMax : 0;
   if (G.wallMax > 0) {
-    for (let k = 0; k < segs; k++) {
-      const a0 = (k / segs) * TAU + 0.02;
-      const a1 = ((k + 1) / segs) * TAU - 0.02;
-      const alive = k / segs < frac || frac >= 1;
-      ctx.strokeStyle = G.wall > 0 ? (alive ? hexA(col, 0.85) : hexA(col, 0.25)) : 'rgba(255,255,255,0.08)';
-      ctx.lineWidth = G.wall > 0 ? 6 : 2;
-      ctx.beginPath();
-      ctx.arc(0, 0, WALL_R, a0, a1);
-      ctx.stroke();
+    const rings = wl >= 6 ? [WALL_R, WALL_R - S.wallW - 3] : [WALL_R];
+    for (const R of rings) {
+      for (let k = 0; k < segs; k++) {
+        const a0 = (k / segs) * TAU + 0.025;
+        const a1 = ((k + 1) / segs) * TAU - 0.025;
+        const alive = k / segs < frac || frac >= 1;
+        ctx.strokeStyle = G.wall > 0 ? (alive ? hexA(tierCol, 0.9) : hexA(tierCol, 0.22)) : 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = G.wall > 0 ? (R === WALL_R ? S.wallW : S.wallW * 0.6) : 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, R, a0, a1);
+        ctx.stroke();
+      }
     }
-    if (G.wall > 0) {
-      ctx.strokeStyle = hexA(col, 0.25);
-      ctx.lineWidth = 1;
+    // Rivets on steel and gold walls
+    if (G.wall > 0 && wl >= 4) {
+      ctx.fillStyle = hexA('#ffffff', 0.55);
+      for (let k = 0; k < segs; k += 2) {
+        const a = ((k + 0.5) / segs) * TAU;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * WALL_R, Math.sin(a) * WALL_R, 1.2, 0, TAU);
+        ctx.fill();
+      }
+    }
+    if (G.asc.includes('asc-muro') && G.wall > 0) {
+      ctx.strokeStyle = hexA('#ffd60a', 0.25 + Math.sin(t * 3) * 0.1);
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, WALL_R - 6, 0, TAU);
+      ctx.arc(0, 0, WALL_R + S.wallW, 0, TAU);
       ctx.stroke();
     }
   }
-  if (G.thorns > 0) {
-    const n = 28 + Math.round(G.thorns) * 4;
-    const len = 6 + G.thorns * 2;
-    ctx.fillStyle = hexA('#ff8a9c', 0.9);
-    for (let k = 0; k < n; k++) {
-      const a = (k / n) * TAU + t * 0.15;
-      const ca = Math.cos(a);
-      const sa = Math.sin(a);
-      const b = WALL_R + 3;
-      ctx.beginPath();
-      ctx.moveTo(ca * b - sa * 2.4, sa * b + ca * 2.4);
-      ctx.lineTo(ca * (b + len), sa * (b + len));
-      ctx.lineTo(ca * b + sa * 2.4, sa * b - ca * 2.4);
-      ctx.closePath();
-      ctx.fill();
+  if (S.thornN > 0) {
+    const T = G.thorns;
+    const c = T >= 7 ? '#ff2d55' : T >= 5 ? '#b6ff3d' : T >= 4 ? '#d6dde6' : '#ff8a9c';
+    ctx.fillStyle = hexA(c, 0.92);
+    for (let row = 0; row < S.thornRows; row++) {
+      const n = S.thornN - row * 8;
+      const len = S.thornLen * (row ? 0.65 : 1);
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * TAU + t * 0.15 * (row ? -1 : 1) + row * 0.1;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const b = WALL_R + S.wallW / 2 + row * 4;
+        const wob = 1 + Math.sin(t * 5 + k) * 0.08;
+        ctx.beginPath();
+        ctx.moveTo(ca * b - sa * 2.6, sa * b + ca * 2.6);
+        ctx.lineTo(ca * (b + len * wob), sa * (b + len * wob));
+        ctx.lineTo(ca * b + sa * 2.6, sa * b - ca * 2.6);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
   }
 }
 
 function drawStructures(ctx: CanvasRenderingContext2D, g: Game, col: string, t: number) {
   const G = g.g;
-  if (G.faro > 0) {
+  const S = structs(g);
+  if (S.faroBeams > 0) {
     ctx.globalCompositeOperation = 'lighter';
-    for (let b = 0; b < G.faro; b++) {
-      const a = G.faroA + (b * TAU) / G.faro;
-      const x = Math.cos(a) * 300;
-      const y = Math.sin(a) * 300;
+    for (let b = 0; b < S.faroBeams; b++) {
+      const a = G.faroA + (b * TAU) / S.faroBeams;
+      const x = Math.cos(a) * 320;
+      const y = Math.sin(a) * 320;
       const gr = ctx.createLinearGradient(0, 0, x, y);
-      gr.addColorStop(0, hexA(col, 0.7));
-      gr.addColorStop(1, hexA(col, 0));
+      const c = G.faro >= 6 || G.asc.includes('asc-faro') ? '#fff3c4' : col;
+      gr.addColorStop(0, hexA(c, 0.75));
+      gr.addColorStop(1, hexA(c, 0));
       ctx.strokeStyle = gr;
-      ctx.lineWidth = 7;
       ctx.lineCap = 'round';
+      ctx.lineWidth = S.faroW * 2.4;
+      ctx.globalAlpha = 0.35;
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(x, y);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = S.faroW;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = Math.max(1.2, S.faroW * 0.25);
       ctx.stroke();
     }
     ctx.globalCompositeOperation = 'source-over';
   }
   if (G.orbit > 0) {
-    ctx.strokeStyle = 'rgba(232,246,255,0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(0, 0, ORBIT_R, 0, TAU);
-    ctx.stroke();
-    for (let b = 0; b < G.orbit; b++) {
-      const a = G.orbitA + (b * TAU) / G.orbit;
-      ctx.save();
-      ctx.translate(Math.cos(a) * ORBIT_R, Math.sin(a) * ORBIT_R);
-      ctx.rotate(a + t * 12);
-      ctx.fillStyle = '#e8f6ff';
+    const rings: [number, number, number][] = [[S.orbitIn, ORBIT_R, 1]];
+    if (S.orbitOut) rings.push([S.orbitOut, ORBIT_R + 42, -1]);
+    const hot = G.orbit >= 6;
+    for (const [n, R, dir] of rings) {
+      ctx.strokeStyle = hexA(hot ? '#ff8a1f' : '#e8f6ff', 0.1);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(0, -10);
-      ctx.lineTo(3.5, 0);
-      ctx.lineTo(0, 10);
-      ctx.lineTo(-3.5, 0);
-      ctx.closePath();
-      ctx.fill();
+      ctx.arc(0, 0, R, 0, TAU);
+      ctx.stroke();
+      for (let b = 0; b < n; b++) {
+        const a = G.orbitA * dir + (b * TAU) / n;
+        const bx = Math.cos(a) * R;
+        const by = Math.sin(a) * R;
+        // motion trail
+        ctx.strokeStyle = hexA(hot ? '#ff8a1f' : '#e8f6ff', 0.25);
+        ctx.lineWidth = S.orbitSize * 0.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, R, a - 0.18 * dir, a, dir < 0);
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(bx, by);
+        ctx.rotate(a + t * 12 * dir);
+        ctx.fillStyle = hot ? '#ffb347' : '#e8f6ff';
+        const z = S.orbitSize;
+        ctx.beginPath();
+        ctx.moveTo(0, -z);
+        ctx.lineTo(z * 0.35, 0);
+        ctx.lineTo(0, z);
+        ctx.lineTo(-z * 0.35, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+  if (S.sats > 0) {
+    for (let k = 0; k < S.sats; k++) {
+      const sa = g.t * 1.4 * (k % 2 ? -1 : 1) + (k * TAU) / S.sats;
+      const R = 36 + (k % 3) * 10;
+      const x = Math.cos(sa) * R;
+      const y = Math.sin(sa) * R;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(sa);
+      ctx.fillStyle = col;
+      ctx.fillRect(-2.5, -2.5, 5, 5);
+      ctx.fillStyle = hexA(col, 0.6);
+      ctx.fillRect(-8, -1.5, 4, 3);
+      ctx.fillRect(4, -1.5, 4, 3);
       ctx.restore();
     }
   }
-  if (G.turret > 0) {
-    const sa = g.t * 1.4;
-    const x = Math.cos(sa) * 36;
-    const y = Math.sin(sa) * 36;
-    ctx.fillStyle = col;
+}
+
+/** The living map: energy flowing along the circuit to the core, drifting dust, a heartbeat and a danger tint. */
+function livingMap(ctx: CanvasRenderingContext2D, g: Game, v: View) {
+  const t = g.t;
+  const danger = Math.min(1, Math.max(0, (g.wave - 1) / 35));
+  const boss = g.viruses.some((x) => x.boss);
+  const pc = danger > 0.6 || boss ? '#ff5a7a' : v.color;
+  ctx.globalCompositeOperation = 'lighter';
+  traces.forEach((pts, i) => {
+    let total = 0;
+    const seg: number[] = [];
+    for (let k = 2; k < pts.length; k += 2) {
+      const l = Math.hypot(pts[k] - pts[k - 2], pts[k + 1] - pts[k - 1]);
+      seg.push(l);
+      total += l;
+    }
+    for (let pkt = 0; pkt < 2; pkt++) {
+      // Packets travel inwards, towards the core.
+      let d = (1 - ((t * (0.12 + (i % 5) * 0.02) + i * 0.37 + pkt * 0.5) % 1)) * total;
+      let k = 0;
+      while (k < seg.length && d > seg[k]) d -= seg[k++];
+      if (k >= seg.length) continue;
+      const f = d / seg[k];
+      const x = pts[k * 2] + (pts[k * 2 + 2] - pts[k * 2]) * f;
+      const y = pts[k * 2 + 1] + (pts[k * 2 + 3] - pts[k * 2 + 1]) * f;
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, 7);
+      gr.addColorStop(0, hexA(pc, 0.55));
+      gr.addColorStop(1, hexA(pc, 0));
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, TAU);
+      ctx.fill();
+    }
+  });
+  // Dust
+  ctx.fillStyle = hexA(v.color, 0.18);
+  for (const m of motes) {
+    const x = ((m.x + t * m.v) % 1) * v.w;
+    const y = ((m.y + Math.sin(t * 0.3 + m.x * 9) * 0.02 + 1) % 1) * v.h;
     ctx.beginPath();
-    ctx.arc(x, y, 3.5 + G.turret * 0.4, 0, TAU);
+    ctx.arc(x, y, m.s, 0, TAU);
     ctx.fill();
-    ctx.strokeStyle = hexA(col, 0.6);
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x - 7, y);
-    ctx.lineTo(x + 7, y);
-    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // Heartbeat ripple from the core
+  const beat = (t % 1.6) / 1.6;
+  ctx.strokeStyle = hexA(v.color, 0.08 * (1 - beat));
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(v.w / 2, v.h / 2, (CORE_R + beat * 260) * v.scale, 0, TAU);
+  ctx.stroke();
+  // Danger tint at the edges (stronger late, pulsing red with a boss)
+  const edge = (danger * 0.14 + (boss ? 0.1 + Math.sin(t * 4) * 0.06 : 0));
+  if (edge > 0.01) {
+    const r = ctx.createRadialGradient(v.w / 2, v.h / 2, Math.min(v.w, v.h) * 0.35, v.w / 2, v.h / 2, Math.max(v.w, v.h) * 0.75);
+    r.addColorStop(0, 'rgba(255,40,80,0)');
+    r.addColorStop(1, `rgba(255,40,80,${edge})`);
+    ctx.fillStyle = r;
+    ctx.fillRect(0, 0, v.w, v.h);
   }
 }
 
@@ -928,10 +1109,11 @@ function drawSynergyLinks(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     const gr = ctx.createLinearGradient(A.x, A.y, B.x, B.y);
     gr.addColorStop(0, hexA(DEF_INFO[sy.a].color, 0.6));
     gr.addColorStop(1, hexA(DEF_INFO[sy.b].color, 0.6));
+    const adj = g.synAdj.includes(id);
     ctx.strokeStyle = gr;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 6]);
-    ctx.lineDashOffset = -t * 40;
+    ctx.lineWidth = adj ? 3.5 : 2;
+    ctx.setLineDash(adj ? [10, 4] : [4, 6]);
+    ctx.lineDashOffset = -t * (adj ? 70 : 40);
     ctx.beginPath();
     const mx = (A.x + B.x) * 0.25;
     const my = (A.y + B.y) * 0.25;

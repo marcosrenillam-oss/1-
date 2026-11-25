@@ -55,6 +55,8 @@ export interface Defender {
   pending: number;
   /** Legendary fusion: a second defender living in the same body. */
   fuse?: { kind: DefKind; stats: Stats; flags: Record<string, number>; evo: string[]; cd: number; spin: number; pending: number; lockId: number; lockT: number; aim: number };
+  /** Barrel kick after a shot (visual). */
+  recoil?: number;
   /** Drones of a drone bay. */
   drones?: { x: number; y: number; cd: number; a: number }[];
 }
@@ -135,7 +137,8 @@ export interface Shot {
 export type Fx =
   | { k: 'p'; x: number; y: number; vx: number; vy: number; life: number; max: number; c: string; s: number }
   | { k: 'ring'; x: number; y: number; r0: number; r1: number; life: number; max: number; c: string; w: number }
-  | { k: 'bolt'; pts: number[]; life: number; max: number; c: string }
+  | { k: 'bolt'; pts: number[]; life: number; max: number; c: string; w?: number }
+  | { k: 'flash'; x: number; y: number; r: number; life: number; max: number; c: string }
   | { k: 'beam'; x1: number; y1: number; x2: number; y2: number; c: string; w: number; life: number; max: number }
   | { k: 'txt'; x: number; y: number; s: string; life: number; max: number; c: string }
   | { k: 'xp'; x: number; y: number; life: number; max: number; c: string };
@@ -186,6 +189,10 @@ export interface Globals {
   arcT: number;
   corePulse: number;
   corePulseT: number;
+  /** Structures that reached their top level and ascended. */
+  asc: string[];
+  ascT: number;
+  wallT: number;
   nova: number;
   novaT: number;
   rerolls: number;
@@ -238,6 +245,8 @@ export interface Game {
   zones: Zone[];
   /** Active synergies between defenders. */
   syn: string[];
+  /** Synergies whose two defenders sit side by side on the ring (stronger). */
+  synAdj: string[];
   /** Defender types that can appear (Laboratorio unlocks). */
   unlocked: DefKind[];
   shake: number;

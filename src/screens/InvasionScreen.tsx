@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CATALOGUE_SIZE, choose, MAX_DEFENDERS, offer, RARITY_LABEL, type Card } from '../invasion/cards';
+import { CATALOGUE_SIZE, choose, kindsOf, MAX_DEFENDERS, offer, placements, RARITY_LABEL, type Card, type Placement } from '../invasion/cards';
 import { LAB, labCost, labLevel, startOpts } from '../invasion/lab';
 import { DEF_INFO, defenderName, SYNERGIES } from '../invasion/defenders';
 import type { InvasionResult } from '../invasion/record';
 import { draw, drawBackground, type View } from '../invasion/render';
 import { BOSS_NAMES, datosFor, energyFor, newGame, rand, restore, snapshot, update, xpNeed, type InvasionSnapshot } from '../invasion/sim';
-import type { Game } from '../invasion/types';
+import type { DefKind, Game } from '../invasion/types';
 import type { InvasionRecord } from '../storage/persistence';
 import { IconBack } from '../components/Icons';
 import { haptic } from '../haptics';
@@ -45,6 +45,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
   const [paused, setPaused] = useState(false);
   const [banner, setBanner] = useState<{ text: string; sub?: string; boss?: boolean; key: number } | null>(null);
   const [result, setResult] = useState<InvasionResult | null>(null);
+  const [placing, setPlacing] = useState<{ card: Card; opts: Placement[] } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const game = useRef<Game | null>(null);
@@ -211,11 +212,21 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     }
   }, [phase]);
 
-  const pick = (c: Card) => {
+  const pick = (c: Card, at?: number) => {
     const g = game.current;
     if (!g) return;
-    choose(g, c);
-    haptic(c.kind === 'evo' ? 'heavy' : 'success');
+    // A new defender: first choose where it goes on the ring.
+    if (c.kind === 'new' && at === undefined) {
+      const opts = placements(g, c.id.slice(4) as DefKind);
+      if (opts.length > 1) {
+        haptic('tap');
+        setPlacing({ card: c, opts });
+        return;
+      }
+    }
+    setPlacing(null);
+    choose(g, c, at);
+    haptic(c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' ? 'heavy' : 'success');
     if (g.pending > 0) {
       const o = offer(g, () => rand(g));
       cardsRef.current = o;
@@ -382,7 +393,33 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         </>
       )}
 
-      {phase === 'play' && cards && g && (
+      {phase === 'play' && cards && g && placing && (
+        <div className="inv-sheet" role="dialog" aria-label="Coloca tu defensor">
+          <div className="inv-sheet-card">
+            <span className="eyebrow">Nuevo defensor</span>
+            <p className="inv-sheet-title display">¿Dónde colocas {placing.card.title}?</p>
+            <p className="inv-place-hint">Los combos son más fuertes si los dos defensores están juntos.</p>
+            <div className="inv-cards inv-places">
+              {placing.opts.map((o, i) => (
+                <button key={o.at} type="button" className="inv-card inv-place" style={{ ['--c' as string]: placing.card.color, ['--i' as string]: i }} onClick={() => pick(placing.card, o.at)}>
+                  <RingPreview g={g} at={o.at} kind={placing.card.id.slice(4) as DefKind} />
+                  <span className="inv-place-text">
+                    <span className="inv-card-title display">
+                      Entre {defenderName(o.left)} y {defenderName(o.right)}
+                    </span>
+                    <span className={`inv-card-desc${o.syn.length ? ' is-syn' : ''}`}>{o.syn.length ? `Refuerza: ${o.syn.join(', ')}` : 'Sin combos con sus vecinos'}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button type="button" className="inv-reroll inv-place-back" onClick={() => setPlacing(null)}>
+              Volver a las cartas
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'play' && cards && g && !placing && (
         <div className="inv-sheet" role="dialog" aria-label="Elige una mejora">
           <div className="inv-sheet-card">
             <span className="eyebrow">{evoCards ? '¡Evolución!' : `Nivel ${g.level}`}</span>
@@ -492,5 +529,31 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         </div>
       )}
     </div>
+  );
+}
+
+/** Small diagram of the ring with the new defender in its proposed place. */
+function RingPreview({ g, at, kind }: { g: Game; at: number; kind: DefKind }) {
+  const list: { kinds: DefKind[]; isNew: boolean }[] = g.defenders.map((d) => ({ kinds: kindsOf(d), isNew: false }));
+  list.splice(at, 0, { kinds: [kind], isNew: true });
+  const n = list.length;
+  return (
+    <svg viewBox="-30 -30 60 60" className="inv-ring-preview" aria-hidden="true">
+      <circle r="20" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeDasharray="2 3" />
+      <rect x="-5" y="-5" width="10" height="10" rx="2.5" fill="#15171b" stroke="var(--lime)" strokeWidth="1.2" />
+      {list.map((d, i) => {
+        const a = -Math.PI / 2 + (i * Math.PI * 2) / n;
+        const x = Math.cos(a) * 20;
+        const y = Math.sin(a) * 20;
+        return d.isNew ? (
+          <g key={i}>
+            <circle cx={x} cy={y} r="7.5" fill={DEF_INFO[kind].color} opacity="0.25" />
+            <circle cx={x} cy={y} r="4.6" fill={DEF_INFO[kind].color} stroke="#fff" strokeWidth="1.2" />
+          </g>
+        ) : (
+          <circle key={i} cx={x} cy={y} r="3.2" fill={DEF_INFO[d.kinds[0]].color} opacity="0.85" />
+        );
+      })}
+    </svg>
   );
 }

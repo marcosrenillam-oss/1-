@@ -7,6 +7,9 @@ export const RING_R = 64;
 export const WALL_R = 102;
 export const ORBIT_R = 132;
 const MAX_FX = 700;
+const MAX_ALIVE = 300;
+/** Viruses that linger get enraged: faster, and in the end immune to slows and pushes. */
+const RAGE_T = 25;
 
 /** Deterministic random numbers kept inside the game (so a saved game continues the same way). */
 export function rand(g: Game): number {
@@ -19,7 +22,7 @@ export function rand(g: Game): number {
 export function defaultGlobals(): Globals {
   return {
     dmgMul: 1, rateMul: 1, rangeMul: 1, critAdd: 0, xpMul: 1, energyMul: 1, regen: 0, shieldMax: 0, shield: 0, shieldCd: 12, shieldT: 0, aura: 0, brake: 0,
-    wall: 0, wallMax: 0, thorns: 0, orbit: 0, orbitA: 0, faro: 0, faroA: 0, coreMines: 0, coreMinesT: 2, arc: 0, arcT: 1, corePulse: 0, corePulseT: 3,
+    wall: 0, wallMax: 0, thorns: 0, orbit: 0, orbitA: 0, faro: 0, faroA: 0, coreMines: 0, coreMinesT: 2, arc: 0, arcT: 1, corePulse: 0, corePulseT: 3, asc: [], ascT: 0, wallT: 0,
     nova: 0, novaT: 0, rerolls: 1, choices: 3, execute: 0, bossMul: 1, firstHit: 0, chainReaction: 0, hitSlow: 0, hitBurn: 0,
     backup: 0, turret: 0, turretCd: 0, enemyHp: 1, enemySpeed: 1, horde: 1, extraBoss: 0, bossNext: 0, bossBounty: 0, eliteChance: 0, waveSpeed: 1,
   };
@@ -43,7 +46,7 @@ export interface StartOpts {
 export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) | 0, arena = 300, arenaY = arena, o: StartOpts = {}): Game {
   const g: Game = {
     t: 0, arena, arenaY, wave: 0, waveT: 0, waveLen: 0, phase: 'break', breakT: 1.6, spawns: [], hp: 100, maxHp: 100, g: defaultGlobals(), defenders: [], viruses: [], shots: [], fx: [],
-    xp: 0, level: 1, pending: 0, kills: 0, bosses: 0, taken: [], ring: 0, zones: [], syn: [], unlocked: [...new Set([...BASE_KINDS, ...(o.unlocked ?? [])])],
+    xp: 0, level: 1, pending: 0, kills: 0, bosses: 0, taken: [], ring: 0, zones: [], syn: [], synAdj: [], unlocked: [...new Set([...BASE_KINDS, ...(o.unlocked ?? [])])],
     shake: 0, hurt: 0, over: false, nextId: 1, seed, events: [],
   };
   g.maxHp = g.hp = 100 + (o.hp ?? 0);
@@ -53,7 +56,10 @@ export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) | 0, arena =
   if (o.choices) g.g.choices = 4;
   g.g.shieldMax = g.g.shield = o.shield ?? 0;
   g.g.xpMul *= 1 + (o.xp ?? 0);
-  if (o.wall) g.g.wallMax = g.g.wall = 80;
+  if (o.wall) {
+    g.g.wallMax = g.g.wall = 120;
+    g.taken.push('muro');
+  }
   g.pending = o.cards ?? 0;
   addDefender(g, 'canon');
   const pool = g.unlocked.filter((k) => k !== 'canon' && k !== 'mortero');
@@ -67,11 +73,11 @@ export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) | 0, arena =
 }
 
 /** Life of a basic virus at a wave, before the threat multiplier. */
-export const hpAt = (wave: number) => 8 * Math.pow(1.12, wave - 1) * Math.pow(1.035, Math.max(0, wave - 25));
+export const hpAt = (wave: number) => 8 * Math.pow(1.12, wave - 1) * Math.pow(1.055, Math.max(0, wave - 18));
 /** Core structures (wall spikes, orbit blades, beacon…) grow with the waves. */
 export const coreScale = (wave: number) => Math.pow(1.09, Math.max(0, wave - 1));
 /** Defenders get a little stronger every wave on their own. */
-const passive = (wave: number) => Math.pow(1.05, Math.max(0, wave - 1));
+const passive = (wave: number) => Math.pow(1.04, Math.max(0, wave - 1));
 export const xpNeed = (level: number) => Math.round(5 + level * 2.6 + Math.pow(1.09, level));
 
 interface VDef { hp: number; sp: number; r: number; dmg: number; xp: number; armor?: number; shield?: number; boss?: boolean; color: string }
@@ -170,11 +176,20 @@ function burst(g: Game, x: number, y: number, c: string, n: number, sp = 120, s 
 function ring(g: Game, x: number, y: number, r0: number, r1: number, c: string, life = 0.35, w = 2.5) {
   if (g.fx.length < MAX_FX) g.fx.push({ k: 'ring', x, y, r0, r1, life, max: life, c, w });
 }
-function bolt(g: Game, x0: number, y0: number, x1: number, y1: number, c: string, life = 0.16) {
+function bolt(g: Game, x0: number, y0: number, x1: number, y1: number, c: string, life = 0.24, w = 3) {
   const pts = [x0, y0];
-  for (let j = 1; j <= 3; j++) pts.push(x0 + ((x1 - x0) * j) / 4 + (rand(g) - 0.5) * 12, y0 + ((y1 - y0) * j) / 4 + (rand(g) - 0.5) * 12);
+  const segs = Math.max(4, Math.round(Math.hypot(x1 - x0, y1 - y0) / 14));
+  for (let j = 1; j < segs; j++) pts.push(x0 + ((x1 - x0) * j) / segs + (rand(g) - 0.5) * 14, y0 + ((y1 - y0) * j) / segs + (rand(g) - 0.5) * 14);
   pts.push(x1, y1);
-  g.fx.push({ k: 'bolt', pts, life, max: life, c });
+  g.fx.push({ k: 'bolt', pts, life, max: life, c, w });
+}
+/** A bright hit: flash and sparks. */
+function impact(g: Game, x: number, y: number, c: string, r = 10) {
+  if (g.fx.length < MAX_FX) g.fx.push({ k: 'flash', x, y, r, life: 0.14, max: 0.14, c });
+  burst(g, x, y, c, 4, 150, 1.6);
+}
+function muzzle(g: Game, x: number, y: number, a: number, c: string) {
+  if (g.fx.length < MAX_FX) g.fx.push({ k: 'flash', x: x + Math.cos(a) * 12, y: y + Math.sin(a) * 12, r: 7, life: 0.08, max: 0.08, c });
 }
 
 // ── Damage ────────────────────────────────────────────────────────────────
@@ -207,8 +222,8 @@ export function hit(g: Game, v: Virus, dmg: number, o: HitOpts = {}) {
   if (v.boss || v.elite) d *= g.g.bossMul * (o.bossx3 ? 3 : 1);
   const frozen = v.slowT > 0;
   if (o.brittle && frozen) d *= 1.5;
-  if (frozen && o.kind === 'rayo' && has(g, 'superconductor')) d *= 2;
-  if (frozen && v.burnT > 0 && has(g, 'choque')) d *= 1.6;
+  if (frozen && o.kind === 'rayo' && has(g, 'superconductor')) d *= g.synAdj.includes('superconductor') ? 2.8 : 2;
+  if (frozen && v.burnT > 0 && has(g, 'choque')) d *= g.synAdj.includes('choque') ? 2.1 : 1.6;
   if (frozen && g.defenders.some((x) => x.flags.weaken || x.fuse?.flags.weaken)) d *= 1.4;
   if (!o.pa) d *= 1 - v.armor;
   if (v.shield > 0) {
@@ -242,7 +257,8 @@ function kill(g: Game, v: Virus, src: Defender | null) {
   if (src) src.kills += 1;
   g.xp += v.xp * g.g.xpMul;
   const c = VIRUS[v.type].color;
-  burst(g, v.x, v.y, c, v.boss ? 40 : 9, v.boss ? 220 : 130, v.boss ? 3.4 : 2.2);
+  burst(g, v.x, v.y, c, v.boss ? 40 : 10, v.boss ? 220 : 140, v.boss ? 3.4 : 2.3);
+  if (g.fx.length < MAX_FX) g.fx.push({ k: 'flash', x: v.x, y: v.y, r: v.r * 1.8, life: 0.16, max: 0.16, c });
   if (g.fx.length < MAX_FX) g.fx.push({ k: 'xp', x: v.x, y: v.y, life: 0.7, max: 0.7, c: '#c8ff2e' });
   if (v.boss) {
     ring(g, v.x, v.y, v.r, v.r * 4, c, 0.6, 4);
@@ -310,7 +326,10 @@ function toughestN(g: Game, x: number, y: number, range: number, n: number): Vir
 }
 
 function splash(g: Game, x: number, y: number, r: number, dmg: number, s: Partial<Stats>, src: Defender | null, except?: Virus, color?: string) {
-  ring(g, x, y, 4, r, color ?? (src ? DEF_INFO[src.kind].color : '#fff'), 0.3, 3);
+  const c = color ?? (src ? DEF_INFO[src.kind].color : '#fff');
+  ring(g, x, y, 4, r, c, 0.32, 3);
+  if (g.fx.length < MAX_FX) g.fx.push({ k: 'flash', x, y, r: r * 0.7, life: 0.16, max: 0.16, c });
+  burst(g, x, y, c, 5, 120 + r * 2, 2);
   for (const v of g.viruses) if (!v.dead && v !== except && dist2(v, { x, y }) < (r + v.r) ** 2) hit(g, v, dmg, { crit: s.crit, critMult: s.critMult, slow: s.slow, burn: s.burn, quiet: true, src });
 }
 
@@ -336,11 +355,15 @@ function effective(g: Game, d: Defender, u: Unit, idx: number): Stats {
   for (const id of g.syn) {
     const sy = SYNERGIES.find((x) => x.id === id);
     if (!sy?.mods || !(kinds.includes(sy.a) || kinds.includes(sy.b))) continue;
-    for (const [k, m] of Object.entries(sy.mods)) {
+    const adj = g.synAdj.includes(id);
+    for (const [k, m0] of Object.entries(sy.mods)) {
       const key = k as keyof Stats;
-      if (key === 'count' || key === 'pierce' || key === 'chain') s[key] += m;
-      else if (key === 'slow') s.slow = Math.min(0.9, s.slow * m);
-      else s[key] *= m;
+      if (key === 'count' || key === 'pierce' || key === 'chain') s[key] += m0 + (adj ? 1 : 0);
+      else {
+        const m = adj ? 1 + (m0 - 1) * 1.8 : m0;
+        if (key === 'slow') s.slow = Math.min(0.9, s.slow * m);
+        else s[key] *= m;
+      }
     }
   }
   // Cronos «Eco»: neighbours on the ring fire faster.
@@ -357,6 +380,10 @@ function effective(g: Game, d: Defender, u: Unit, idx: number): Stats {
 function fireShots(g: Game, d: Defender, u: Unit, s: Stats, t: Virus, from = { x: d.x, y: d.y }) {
   const base = Math.atan2(t.y - from.y, t.x - from.x);
   u.aim = base;
+  if (d.id >= 0) {
+    d.recoil = 1;
+    muzzle(g, from.x, from.y, base, DEF_INFO[u.kind].color);
+  }
   const n = Math.max(1, Math.round(s.count));
   const R = s.range * g.g.rangeMul;
   for (let i = 0; i < n; i++) {
@@ -422,6 +449,8 @@ function runUnit(g: Game, d: Defender, u: Unit, idx: number, dt: number) {
         u.aim = Math.atan2(t.y - d.y, t.x - d.x);
         g.fx.push({ k: 'beam', x1: d.x, y1: d.y, x2: t.x, y2: t.y, c: color, w: 2 + Math.min(4, s.dmg / 25) * (ramp > 2 ? 1.5 : 1), life: 0.05, max: 0.05 });
         hit(g, t, s.dmg * rate * dt * ramp, { ...common, quiet: true });
+        if (g.fx.length < MAX_FX) g.fx.push({ k: 'flash', x: t.x, y: t.y, r: 6 + Math.min(10, ramp * 3), life: 0.05, max: 0.05, c: color });
+        if (rand(g) < 0.25) burst(g, t.x, t.y, color, 1, 120, 1.5);
         let from = t;
         const seen = new Set([t.id]);
         for (let k = 0; k < s.chain; k++) {
@@ -450,19 +479,23 @@ function runUnit(g: Game, d: Defender, u: Unit, idx: number, dt: number) {
           seen.add(cur.id);
           const px = pts[pts.length - 2];
           const py = pts[pts.length - 1];
-          for (let j = 1; j <= 3; j++) pts.push(px + ((cur.x - px) * j) / 4 + (rand(g) - 0.5) * 12, py + ((cur.y - py) * j) / 4 + (rand(g) - 0.5) * 12);
+          for (let j = 1; j <= 5; j++) pts.push(px + ((cur.x - px) * j) / 6 + (rand(g) - 0.5) * 16, py + ((cur.y - py) * j) / 6 + (rand(g) - 0.5) * 16);
           pts.push(cur.x, cur.y);
           const fall = u.flags.nofall ? 1 : Math.pow(0.85, k);
           const target: Virus = cur;
           const tx = target.x;
           const ty = target.y;
           hit(g, target, s.dmg * fall, common);
+          impact(g, tx, ty, color, 13);
           if (s.splash) splash(g, tx, ty, s.splash, s.dmg * fall * 0.5, s, d, target);
           cur = nearest(g, tx, ty, 90, seen);
           k++;
         }
-        g.fx.push({ k: 'bolt', pts, life: 0.16, max: 0.16, c: color });
+        g.fx.push({ k: 'bolt', pts, life: 0.28, max: 0.28, c: color, w: 4 + Math.min(4, s.dmg / 40) });
         u.aim = Math.atan2(st.y - d.y, st.x - d.x);
+        muzzle(g, d.x, d.y, u.aim, color);
+        d.recoil = 1;
+        g.shake = Math.max(g.shake, 1.2);
       }
       return;
     }
@@ -525,8 +558,10 @@ function runUnit(g: Game, d: Defender, u: Unit, idx: number, dt: number) {
         u.aim = a;
         const ex = d.x + Math.cos(a) * (u.flags.line ? R + 60 : Math.sqrt(dist2(t, d)));
         const ey = d.y + Math.sin(a) * (u.flags.line ? R + 60 : Math.sqrt(dist2(t, d)));
-        g.fx.push({ k: 'beam', x1: d.x, y1: d.y, x2: ex, y2: ey, c: color, w: 1.6, life: 0.14, max: 0.14 });
-        burst(g, t.x, t.y, color, 5, 140, 1.8);
+        g.fx.push({ k: 'beam', x1: d.x, y1: d.y, x2: ex, y2: ey, c: color, w: 2.4, life: 0.3, max: 0.3 });
+        muzzle(g, d.x, d.y, a, color);
+        d.recoil = 1;
+        impact(g, t.x, t.y, color, 16);
         if (u.flags.line) {
           for (const v of g.viruses) if (!v.dead && !v.hidden && segDist2(v, d, { x: ex, y: ey }) < (v.r + 5) ** 2) hit(g, v, s.dmg, { ...common, bossx3: !!u.flags.bossx3 });
         } else hit(g, t, s.dmg, { ...common, bossx3: !!u.flags.bossx3 });
@@ -685,7 +720,7 @@ function updateShots(g: Game, dt: number) {
         if (s.acid && src) {
           const f = src.kind === 'acido' ? src.flags : src.fuse?.flags ?? {};
           const dur = 3.2 * (f.dur || 1);
-          const burn = s.burn + (has(g, 'gas') ? 10 : 0);
+          const burn = s.burn + (has(g, 'gas') ? (g.synAdj.includes('gas') ? 18 : 10) : 0);
           g.zones.push({ k: 'acid', x: s.tx!, y: s.ty!, r: s.splash, t: dur, max: dur, dps: s.dmg, slow: s.slow, pull: 0, burn, dmg: 0, split: 0, src: src.id, flags: f });
           burst(g, s.tx!, s.ty!, '#b6ff3d', 6, 90, 2);
         } else {
@@ -737,6 +772,10 @@ function updateShots(g: Game, dt: number) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.life -= dt;
+    if (s.kind === 'misil' && g.fx.length < MAX_FX && rand(g) < 0.7) {
+      const life = 0.45;
+      g.fx.push({ k: 'p', x: s.x - s.vx * 0.02, y: s.y - s.vy * 0.02, vx: (rand(g) - 0.5) * 20, vy: (rand(g) - 0.5) * 20, life, max: life, c: rand(g) < 0.3 ? '#ffb347' : '#7a7f88', s: 2.4 });
+    }
     if (s.life <= 0 || Math.abs(s.x) > g.arena + 60 || Math.abs(s.y) > g.arenaY + 60) continue;
     let alive = true;
     for (const v of g.viruses) {
@@ -833,71 +872,169 @@ function updateZones(g: Game, dt: number) {
 }
 
 // ── Core structures ───────────────────────────────────────────────────────
+/** Sizes and counts of every structure at its current level (shared with the renderer). */
+export function structs(g: Game) {
+  const G = g.g;
+  const A = (id: string) => G.asc.includes(id);
+  const o = G.orbit;
+  const oin = o > 0 ? 2 + Math.ceil(o * 0.75) : 0;
+  const oout = o >= 4 ? o - 2 : 0;
+  const ascO = A('asc-orbitales') ? 2 : 1;
+  return {
+    orbitIn: oin * ascO,
+    orbitOut: oout * ascO,
+    orbitSize: 8 + o + (ascO > 1 ? 4 : 0),
+    orbitSpeed: 2.1 + 0.15 * o,
+    faroBeams: A('asc-faro') ? 6 : G.faro > 0 ? [1, 1, 2, 2, 3, 4][Math.min(5, G.faro - 1)] : 0,
+    faroW: 4 + G.faro * 1.5 + (A('asc-faro') ? 4 : 0),
+    wallW: 3 + Math.min(8, Math.ceil(G.wallMax / 70)),
+    thornN: G.thorns > 0 ? 20 + 6 * G.thorns : 0,
+    thornLen: 5 + 2 * G.thorns + (G.thorns >= 8 ? 4 : 0),
+    thornRows: G.thorns >= 6 ? 2 : 1,
+    auraR: G.aura > 0 ? 70 + 10 * G.aura : 0,
+    pulseR: A('asc-pulso') ? 220 : 100 + 15 * G.corePulse,
+    sats: G.turret > 0 ? Math.ceil(G.turret / 2) * (A('asc-satelite') ? 2 : 1) : 0,
+  };
+}
+
 function updateStructures(g: Game, dt: number) {
   const G = g.g;
   const cs = coreScale(g.wave);
+  const A = (id: string) => G.asc.includes(id);
+  const S = structs(g);
+  // Orbiting blades: an inner ring and, from level 4, a counter-rotating outer ring.
   if (G.orbit > 0) {
-    G.orbitA += dt * 2.1;
-    for (let b = 0; b < G.orbit; b++) {
-      const a = G.orbitA + (b * Math.PI * 2) / G.orbit;
-      const bx = Math.cos(a) * ORBIT_R;
-      const by = Math.sin(a) * ORBIT_R;
+    G.orbitA += dt * S.orbitSpeed;
+    const dmg = 10 * (1 + 0.15 * G.orbit) * cs * (A('asc-orbitales') ? 1.6 : 1);
+    const rings: [number, number, number][] = [[S.orbitIn, ORBIT_R, 1]];
+    if (S.orbitOut) rings.push([S.orbitOut, ORBIT_R + 42, -1]);
+    rings.forEach(([n, R, dir], ri) => {
+      for (let b = 0; b < n; b++) {
+        const a = G.orbitA * dir + (b * Math.PI * 2) / n;
+        const bx = Math.cos(a) * R;
+        const by = Math.sin(a) * R;
+        for (const v of g.viruses) {
+          if (v.dead || v.hidden || dist2(v, { x: bx, y: by }) > (v.r + S.orbitSize) ** 2) continue;
+          const key = 900000 + ri * 1000 + b;
+          if ((v.hits[key] ?? -1) > g.t) continue;
+          v.hits[key] = g.t + 0.3;
+          hit(g, v, dmg, { raw: true, quiet: true, burn: G.orbit >= 6 ? 4 * cs : 0 });
+          burst(g, bx, by, '#e8f6ff', 3, 110, 1.8);
+        }
+      }
+    });
+  }
+  // Rotating beacon laser.
+  if (S.faroBeams > 0) {
+    G.faroA += dt * (1.6 + 0.15 * G.faro);
+    const L = 320;
+    const dps = 24 * (1 + 0.3 * G.faro) * cs * (A('asc-faro') ? 1.3 : 1);
+    for (let b = 0; b < S.faroBeams; b++) {
+      const a = G.faroA + (b * Math.PI * 2) / S.faroBeams;
+      const end = { x: Math.cos(a) * L, y: Math.sin(a) * L };
       for (const v of g.viruses) {
-        if (v.dead || v.hidden || dist2(v, { x: bx, y: by }) > (v.r + 9) ** 2) continue;
-        const key = 900000 + b;
-        if ((v.hits[key] ?? -1) > g.t) continue;
-        v.hits[key] = g.t + 0.3;
-        hit(g, v, 10 * cs, { raw: true, quiet: true });
-        burst(g, bx, by, '#e8f6ff', 2, 90, 1.6);
+        if (v.dead || v.hidden || segDist2(v, { x: 0, y: 0 }, end) > (v.r + S.faroW * 0.8) ** 2) continue;
+        hit(g, v, dps * dt, { raw: true, quiet: true, burn: G.faro >= 4 ? 3 : 0, slow: A('asc-faro') ? 0.4 : 0 });
+        if (rand(g) < 0.15) burst(g, v.x, v.y, '#ffffff', 1, 80, 1.5);
       }
     }
   }
-  if (G.faro > 0) {
-    G.faroA += dt * 1.9;
-    const L = 300;
-    for (let b = 0; b < G.faro; b++) {
-      const a = G.faroA + (b * Math.PI * 2) / G.faro;
-      const end = { x: Math.cos(a) * L, y: Math.sin(a) * L };
-      for (const v of g.viruses) if (!v.dead && !v.hidden && segDist2(v, { x: 0, y: 0 }, end) < (v.r + 6) ** 2) hit(g, v, 24 * cs * dt, { raw: true, quiet: true, burn: 2 });
-    }
-  }
+  // Mine sower.
   if (G.coreMines > 0) {
     G.coreMinesT -= dt;
     if (G.coreMinesT <= 0 && g.phase === 'wave') {
-      G.coreMinesT = 4;
-      for (let k = 0; k < G.coreMines; k++) {
+      const asc = A('asc-minas');
+      G.coreMinesT = asc ? 2 : G.coreMines >= 4 ? 3 : 4;
+      const per = [1, 2, 2, 2, 3, 3][Math.min(5, G.coreMines - 1)] * (asc ? 2 : 1);
+      for (let k = 0; k < per; k++) {
         const a = rand(g) * Math.PI * 2;
-        const r = 115 + rand(g) * 110;
-        g.zones.push({ k: 'mine', x: Math.cos(a) * r, y: Math.sin(a) * r, r: 38, t: 25, max: 25, dps: 0, slow: 0, pull: 0, burn: 0, dmg: 30 * cs, split: 0, src: -1, flags: {} });
+        const r = 115 + rand(g) * 120;
+        const mx = Math.cos(a) * r;
+        const my = Math.sin(a) * r;
+        g.zones.push({ k: 'mine', x: mx, y: my, r: 34 + 3 * G.coreMines, t: 25, max: 25, dps: 0, slow: 0, pull: 0, burn: 0, dmg: 30 * (1 + 0.2 * G.coreMines) * cs, split: G.coreMines >= 6 || asc ? 3 : 0, src: -1, flags: {} });
+        ring(g, mx, my, 2, 14, '#c8ff2e', 0.3, 2);
       }
     }
   }
+  // Electric arcs from the core.
   if (G.arc > 0) {
     G.arcT -= dt;
     if (G.arcT <= 0) {
-      const targets = nearestN(g, 0, 0, 175, 1 + G.arc);
+      const asc = A('asc-arco');
+      const targets = asc ? nearestN(g, 0, 0, 210, 40) : nearestN(g, 0, 0, 180, 1 + G.arc);
       if (targets.length) {
-        G.arcT = 1.3;
+        G.arcT = asc ? 1 : Math.max(0.6, 1.3 - 0.1 * G.arc);
+        const dmg = 16 * (1 + 0.2 * G.arc) * cs;
+        const jumps = G.arc >= 6 ? 2 : G.arc >= 3 ? 1 : 0;
         for (const t of targets) {
-          bolt(g, 0, 0, t.x, t.y, '#bfe9ff');
-          hit(g, t, 16 * cs, { raw: true, slow: 0.3 });
+          bolt(g, 0, 0, t.x, t.y, '#bfe9ff', 0.24, 3.5);
+          hit(g, t, dmg, { raw: true, slow: 0.3 });
+          impact(g, t.x, t.y, '#bfe9ff', 12);
+          let from: Virus = t;
+          const seen = new Set([t.id]);
+          for (let k = 0; k < jumps; k++) {
+            const nx = nearest(g, from.x, from.y, 80, seen);
+            if (!nx) break;
+            seen.add(nx.id);
+            bolt(g, from.x, from.y, nx.x, nx.y, '#bfe9ff', 0.2, 2.5);
+            hit(g, nx, dmg * 0.7, { raw: true, slow: 0.3, quiet: true });
+            from = nx;
+          }
         }
+        g.shake = Math.max(g.shake, 1.2);
       }
     }
   }
+  // Heartbeat pulse.
   if (G.corePulse > 0) {
     G.corePulseT -= dt;
-    if (G.corePulseT <= 0 && nearest(g, 0, 0, 120)) {
-      G.corePulseT = Math.max(2.2, 6.5 - G.corePulse);
-      ring(g, 0, 0, CORE_R, 120, '#ffffff', 0.5, 4);
+    const R = S.pulseR;
+    if (G.corePulseT <= 0 && nearest(g, 0, 0, R)) {
+      const asc = A('asc-pulso');
+      G.corePulseT = G.corePulse >= 6 ? 1.6 : Math.max(2, 6.5 - 0.75 * G.corePulse);
+      ring(g, 0, 0, CORE_R, R, '#ffffff', 0.55, 5);
+      ring(g, 0, 0, CORE_R, R * 0.8, '#c8ff2e', 0.45, 3);
+      g.fx.push({ k: 'flash', x: 0, y: 0, r: 60, life: 0.25, max: 0.25, c: '#ffffff' });
       for (const v of g.viruses) {
-        if (v.dead || dist2(v, { x: 0, y: 0 }) > 120 ** 2) continue;
-        hit(g, v, 12 * cs, { raw: true, quiet: true });
+        if (v.dead || dist2(v, { x: 0, y: 0 }) > R ** 2) continue;
+        hit(g, v, 12 * (1 + 0.25 * G.corePulse) * cs, { raw: true, quiet: true, slow: G.corePulse >= 4 ? 0.4 : 0 });
+        if (asc) {
+          v.slowF = v.boss ? 0.5 : 0.92;
+          v.slowT = 1;
+        }
         v.kb += v.boss ? 15 : 55;
       }
     }
   }
+  // Spikes: the «Erizo» ascension fires a crown of spikes outwards.
+  if (G.thorns > 0 && A('asc-espinas')) {
+    G.ascT -= dt;
+    if (G.ascT <= 0 && g.phase === 'wave') {
+      G.ascT = 1.6;
+      const n = 16;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + g.t;
+        const x = Math.cos(a) * (WALL_R + 8);
+        const y = Math.sin(a) * (WALL_R + 8);
+        g.shots.push({ x, y, px: x, py: y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, dmg: 18 * cs, r: 3, life: 0.7, pierce: 2, bounce: 0, splash: 0, slow: 0.25, burn: 0, homing: 0, split: 0, crit: 0.1, critMult: 2, execute: 0, target: -1, src: -2, kind: 'core', hit: [] });
+      }
+    }
+  }
+  // Wall self-repair and the «Ciudadela» rebuild.
+  const wl = levelOfTaken(g, 'muro');
+  if (G.wallMax > 0 && g.phase === 'wave') {
+    if (G.wall > 0 && wl >= 3) G.wall = Math.min(G.wallMax, G.wall + G.wallMax * 0.015 * dt);
+    if (G.wall <= 0 && A('asc-muro')) {
+      G.wallT += dt;
+      if (G.wallT >= 4) {
+        G.wallT = 0;
+        G.wall = G.wallMax * 0.5;
+        ring(g, 0, 0, WALL_R - 10, WALL_R + 20, '#ffd60a', 0.6, 5);
+      }
+    }
+  }
 }
+const levelOfTaken = (g: Game, id: string) => g.taken.reduce((n, t) => n + (t === id ? 1 : 0), 0);
 
 // ── Core ──────────────────────────────────────────────────────────────────
 function coreHit(g: Game, v: Virus) {
@@ -964,7 +1101,10 @@ export function update(g: Game, dt: number) {
     if (g.breakT <= 0) startWave(g);
   } else {
     g.waveT += dt;
-    while (g.spawns.length && g.spawns[0].at <= g.waveT) {
+    // Never more than MAX_ALIVE at once: the rest wait (keeps the game smooth).
+    const aliveNow = g.viruses.length;
+    if (aliveNow >= MAX_ALIVE) for (const sp of g.spawns) sp.at += dt;
+    while (g.spawns.length && g.spawns[0].at <= g.waveT && g.viruses.length < MAX_ALIVE) {
       const sp = g.spawns.shift()!;
       spawnVirus(g, sp.type, { elite: sp.elite, angle: sp.angle });
     }
@@ -982,21 +1122,29 @@ export function update(g: Game, dt: number) {
     d.x = Math.cos(a) * RING_R;
     d.y = Math.sin(a) * RING_R;
   });
-  g.defenders.forEach((d, i) => updateDefender(g, d, i, dt));
-  // The core's satellite gun, orbiting the core
+  g.defenders.forEach((d, i) => {
+    if (d.recoil) d.recoil = Math.max(0, d.recoil - dt * 7);
+    updateDefender(g, d, i, dt);
+  });
+  // Satellites orbiting the core
   if (g.g.turret > 0) {
     g.g.turretCd -= dt;
     if (g.g.turretCd <= 0) {
-      const sa = g.t * 1.4;
-      const from = { x: Math.cos(sa) * 36, y: Math.sin(sa) * 36 };
-      const t = nearest(g, from.x, from.y, 190);
-      if (t) {
-        g.g.turretCd = 0.7;
+      const S = structs(g);
+      const asc = g.g.asc.includes('asc-satelite');
+      g.g.turretCd = Math.max(0.35, 0.75 - 0.06 * g.g.turret);
+      for (let k = 0; k < S.sats; k++) {
+        const sa = g.t * 1.4 * (k % 2 ? -1 : 1) + (k * Math.PI * 2) / S.sats;
+        const R = 36 + (k % 3) * 10;
+        const from = { x: Math.cos(sa) * R, y: Math.sin(sa) * R };
+        const t = nearest(g, from.x, from.y, 200);
+        if (!t) continue;
         const fake = makeDefender(-1, 'canon');
-        const st: Stats = { ...fake.stats, dmg: (6 * coreScale(g.wave)) / passive(g.wave), count: g.g.turret, spread: 0.12 * g.g.turret };
+        const guns = Math.max(1, Math.round(g.g.turret / S.sats));
+        const st: Stats = { ...fake.stats, dmg: (6 * coreScale(g.wave) * (g.g.turret >= 6 ? 1.5 : 1)) / passive(g.wave), count: guns, spread: 0.12 * guns, homing: asc ? 1 : 0 };
         fireShots(g, fake, fake as Unit, st, t, from);
-        for (const s of g.shots) if (s.src === -1) s.kind = 'core';
       }
+      for (const s of g.shots) if (s.src === -1) s.kind = 'core';
     }
   }
   updateShots(g, dt);
@@ -1027,8 +1175,10 @@ export function update(g: Game, dt: number) {
     const dist = Math.hypot(v.x, v.y) || 1;
     behave(g, v, dist);
     if (v.dead) continue;
-    let sp = v.speed * (1 - v.slowF);
-    if (G.brake && dist < 125) sp *= 1 - G.brake;
+    const rage = v.t > RAGE_T ? Math.min(2.4, 1.5 + (v.t - RAGE_T) / 25) : 1;
+    const slowMul = v.t > RAGE_T + 15 ? 1 : (1 - v.slowF) * (G.brake && dist < 125 ? 1 - G.brake : 1);
+    let sp = v.speed * rage * Math.max(0.15, slowMul);
+    if (v.t > RAGE_T) v.kb = 0;
     if (v.type === 'kamikaze' && dist < 140) sp *= 2.4;
     const ux = -v.x / dist;
     const uy = -v.y / dist;
@@ -1053,7 +1203,10 @@ export function update(g: Game, dt: number) {
       const k = (WALL_R + v.r) / nd;
       v.x *= k;
       v.y *= k;
+      const wl = levelOfTaken(g, 'muro');
       G.wall -= v.dmg * 0.9 * dt;
+      if (wl >= 5 && !v.boss) v.kb = Math.max(v.kb, 6);
+      if (wl >= 7) hit(g, v, v.dmg * 2 * cs * dt, { raw: true, quiet: true, crit: 0 });
       if (G.wall <= 0) {
         G.wall = 0;
         g.events.push('wallbreak');
@@ -1061,9 +1214,14 @@ export function update(g: Game, dt: number) {
         g.shake = Math.max(g.shake, 6);
       }
     }
-    if (G.thorns > 0 && atWall) hit(g, v, 14 * G.thorns * cs * dt, { raw: true, quiet: true, crit: 0 });
+    if (G.thorns > 0 && atWall) {
+      const T = G.thorns;
+      const dps = 12 * T * cs * (T >= 4 ? 1.25 : 1) * (T >= 7 ? 1.3 : 1);
+      hit(g, v, dps * dt, { raw: true, quiet: true, crit: 0, slow: T >= 3 ? 0.25 : 0, burn: T >= 5 ? 3 * T : 0 });
+    }
     if (v.dead) continue;
-    if (G.aura > 0 && nd < 82) hit(g, v, G.aura * cs * dt, { raw: true, quiet: true, crit: 0 });
+    const auraR = 70 + 10 * G.aura;
+    if (G.aura > 0 && nd < auraR) hit(g, v, 8 * G.aura * cs * dt, { raw: true, quiet: true, crit: 0 });
     if (!v.dead && nd < CORE_R + v.r) coreHit(g, v);
   }
   flushBooms(g);

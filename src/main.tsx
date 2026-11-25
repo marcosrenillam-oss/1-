@@ -31,6 +31,24 @@ document.addEventListener('touchend', (e) => {
   lastTouchEnd = now;
 }, { passive: false });
 
+// iOS home-screen apps with a translucent status bar report a viewport that is
+// short by the status bar's height, leaving an empty band at the bottom.
+// Measure the real screen and size the app to it.
+function fitViewport() {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  const standalone = nav.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  let h = window.innerHeight;
+  if (standalone && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    const portrait = window.innerHeight >= window.innerWidth;
+    const full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+    h = Math.max(h, full);
+  }
+  document.documentElement.style.setProperty('--app-h', `${h}px`);
+}
+fitViewport();
+window.addEventListener('resize', fitViewport);
+window.addEventListener('orientationchange', () => window.setTimeout(fitViewport, 120));
+
 // Test hook (end-to-end tests only): enabled by a flag in local storage.
 try {
   if (localStorage.getItem('uno-por-ciento:e2e') === '1') {

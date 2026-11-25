@@ -3,7 +3,7 @@ import type { DefKind, Defender, Game, Stats } from './types';
 
 export const MAX_DEFENDERS = 10;
 
-export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion';
+export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc';
 export type Rarity = 'comun' | 'rara' | 'epica' | 'legendaria';
 export const RARITY_LABEL: Record<Rarity, string> = { comun: 'Común', rara: 'Rara', epica: 'Épica', legendaria: 'Legendaria' };
 export interface Card {
@@ -20,7 +20,10 @@ export interface Card {
   color: string;
   /** Second colour (fusions). */
   color2?: string;
-  apply: (g: Game) => void;
+  /** Defender the card acts on (for the visual feedback). */
+  target?: number;
+  /** New defenders: where on the ring (insert index); chosen by the player. */
+  apply: (g: Game, at?: number) => void;
 }
 
 // ── Per-defender stat upgrades ─────────────────────────────────────────────
@@ -67,41 +70,95 @@ interface GlobalDef {
   rarity?: Rarity;
   /** Can only be taken once. */
   once?: boolean;
+  /** Top level: after it, the card stops appearing. */
+  max?: number;
+  /** What the next level brings (1-based). */
+  next?: (lvl: number) => string;
+  /** A visible structure around the core. */
+  struct?: boolean;
+  /** Transformation offered once the structure is at its top level. */
+  asc?: { id: string; title: string; desc: string };
 }
+/** How many times a card id has been taken (its level). */
+export const levelOf = (g: Game, id: string) => g.taken.reduce((n, t) => n + (t === id ? 1 : 0), 0);
+
+/**
+ * Core upgrades. Every one has levels: each pick changes something you can
+ * see or measure, and at the top level the card stops appearing. Structures
+ * then offer an «Ascensión» that transforms them.
+ */
 export const GLOBAL_CARDS: GlobalDef[] = [
-  // Visible core structures
-  { id: 'muro', title: 'Muro', desc: 'Levanta un muro alrededor de la defensa que frena a los virus. Se reconstruye cada oleada.', rarity: 'epica', apply: (g) => { g.g.wallMax += 80; g.g.wall = g.g.wallMax; } },
-  { id: 'espinas', title: 'Espinas', desc: 'El anillo exterior se llena de pinchos que dañan a todo virus que lo toca.', rarity: 'epica', ok: (g) => g.g.thorns < 6, apply: (g) => { g.g.thorns += 1; } },
-  { id: 'orbitales', title: 'Cuchillas orbitales', desc: '+3 cuchillas gigantes que giran alrededor de toda tu defensa.', rarity: 'epica', ok: (g) => g.g.orbit < 15, apply: (g) => { g.g.orbit += 3; } },
-  { id: 'faro', title: 'Faro láser', desc: 'Un rayo gira sin parar desde el núcleo barriendo toda la pantalla.', rarity: 'epica', ok: (g) => g.g.faro < 4, apply: (g) => { g.g.faro += 1; } },
-  { id: 'minas-nucleo', title: 'Sembrador', desc: 'El núcleo siembra minas alrededor durante cada oleada.', rarity: 'epica', ok: (g) => g.g.coreMines < 5, apply: (g) => { g.g.coreMines += 1; } },
-  { id: 'arco-nucleo', title: 'Arco eléctrico', desc: 'El núcleo lanza rayos a los virus más cercanos.', rarity: 'epica', ok: (g) => g.g.arc < 6, apply: (g) => { g.g.arc += 1; } },
-  { id: 'pulso-nucleo', title: 'Latido del núcleo', desc: 'Una onda automática que daña y aparta a los virus cercanos.', rarity: 'epica', ok: (g) => g.g.corePulse < 4, apply: (g) => { g.g.corePulse += 1; } },
-  { id: 'refuerzo', title: 'Muro reforzado', desc: 'El muro aguanta +120 y sus pinchos crecen.', rarity: 'rara', ok: (g) => g.g.wallMax > 0, apply: (g) => { g.g.wallMax += 120; g.g.wall = g.g.wallMax; g.g.thorns += 0.5; } },
-  { id: 'blindaje', title: 'Blindaje', desc: 'Integridad máxima +20 y repara 20.', apply: (g) => { g.maxHp += 20; g.hp = Math.min(g.maxHp, g.hp + 20); } },
-  { id: 'reparacion', title: 'Autorreparación', desc: 'El núcleo se repara 0,6 por segundo.', apply: (g) => { g.g.regen += 0.6; } },
-  { id: 'escudo', title: 'Escudo del núcleo', desc: 'Bloquea un impacto. Se recarga cada 12 s.', ok: (g) => g.g.shieldMax < 5, apply: (g) => { g.g.shieldMax += 1; g.g.shield += 1; } },
-  { id: 'sobreescudo', title: 'Recarga de escudo', desc: 'El escudo se recarga un 30 % más rápido.', ok: (g) => g.g.shieldMax > 0 && g.g.shieldCd > 4, apply: (g) => { g.g.shieldCd *= 0.7; } },
-  { id: 'aura', title: 'Aura de daño', desc: 'Los virus cerca del núcleo reciben daño continuo.', apply: (g) => { g.g.aura += 8; } },
-  { id: 'frenado', title: 'Campo de frenado', desc: 'Los virus cerca del núcleo van un 25 % más lentos.', ok: (g) => g.g.brake < 0.6, apply: (g) => { g.g.brake += 0.25; } },
-  { id: 'potencia', title: 'Potencia global', desc: 'Todos los defensores +12 % de daño.', apply: (g) => { g.g.dmgMul *= 1.12; }, w: 1.3 },
-  { id: 'overclock', title: 'Overclock', desc: 'Todos los defensores +10 % de cadencia.', apply: (g) => { g.g.rateMul *= 1.1; }, w: 1.3 },
-  { id: 'optica', title: 'Óptica', desc: 'Todos los defensores +10 % de alcance.', ok: (g) => g.g.rangeMul < 1.8, apply: (g) => { g.g.rangeMul *= 1.1; } },
-  { id: 'suerte', title: 'Suerte', desc: 'Todos los defensores +5 % de crítico.', apply: (g) => { g.g.critAdd += 0.05; } },
-  { id: 'aprendizaje', title: 'Aprendizaje', desc: '+20 % de experiencia.', apply: (g) => { g.g.xpMul *= 1.2; } },
-  { id: 'botin', title: 'Botín', desc: '+25 % de energía para tu chip al acabar.', apply: (g) => { g.g.energyMul += 0.25; }, w: 0.7 },
-  { id: 'nova-emergencia', title: 'Nova de emergencia', desc: 'Si te golpean, el núcleo lanza una onda (cada 8 s).', ok: (g) => g.g.nova < 3, apply: (g) => { g.g.nova += 1; } },
-  { id: 'recalcular', title: 'Recalcular', desc: '+2 cambios de cartas.', apply: (g) => { g.g.rerolls += 2; }, w: 0.6 },
-  { id: 'eleccion', title: 'Más opciones', desc: 'A partir de ahora eliges entre 4 cartas.', once: true, apply: (g) => { g.g.choices = 4; }, w: 0.5 },
-  { id: 'purga', title: 'Protocolo de purga', desc: 'Todos rematan virus por debajo del 8 %.', ok: (g) => g.g.execute < 0.2, apply: (g) => { g.g.execute += 0.08; } },
-  { id: 'cazajefes', title: 'Antivirus de élite', desc: '+40 % de daño a jefes y élites.', apply: (g) => { g.g.bossMul *= 1.4; } },
-  { id: 'primer-golpe', title: 'Primer impacto', desc: '+60 % de daño a virus intactos.', apply: (g) => { g.g.firstHit += 0.6; } },
-  { id: 'reaccion', title: 'Reacción en cadena', desc: 'Los virus explotan al morir y dañan alrededor.', apply: (g) => { g.g.chainReaction += 0.3; } },
-  { id: 'criogenia', title: 'Criogenia', desc: 'Todos los golpes frenan un 8 %.', ok: (g) => g.g.hitSlow < 0.5, apply: (g) => { g.g.hitSlow += 0.08; } },
-  { id: 'incendio', title: 'Incendio', desc: 'Todos los golpes queman 2/s.', apply: (g) => { g.g.hitBurn += 2; } },
-  { id: 'copia', title: 'Copia de seguridad', desc: 'Una vez por partida, al caer recuperas el 50 %.', once: true, apply: (g) => { g.g.backup = 1; }, w: 0.6 },
-  { id: 'satelite', title: 'Satélite', desc: 'Un satélite orbita el núcleo y dispara (+1 cañón).', rarity: 'epica', ok: (g) => g.g.turret < 6, apply: (g) => { g.g.turret += 1; } },
+  // ── Visible core structures ──
+  { id: 'muro', title: 'Muro', struct: true, max: 8, rarity: 'epica',
+    desc: 'Un muro alrededor de la defensa que frena a los virus y se reconstruye cada oleada.',
+    next: (l) => ['Se levanta el muro', 'Muro más grueso: +60 de aguante', 'Se repara solo durante la oleada', '+60 de aguante · placas de acero', 'Empuja a los virus que lo golpean', '+80 de aguante · doble muralla', 'Placas doradas: devuelve daño', 'Muralla máxima: +120 de aguante'][l - 1],
+    apply: (g) => { g.g.wallMax = wallHp(levelOf(g, 'muro') + 1); g.g.wall = g.g.wallMax; },
+    asc: { id: 'asc-muro', title: 'Ciudadela', desc: 'El muro ya no cae del todo: se reconstruye a la mitad en unos segundos y sus placas brillan.' } },
+  { id: 'espinas', title: 'Espinas', struct: true, max: 8, rarity: 'epica',
+    desc: 'Pinchos en el anillo exterior que dañan a todo virus que los toca.',
+    next: (l) => ['Aparecen los pinchos', 'Más pinchos y más largos', 'Los pinchos frenan un 25 %', 'Pinchos de acero: +daño', 'Pinchos venenosos: queman', 'Doble fila de pinchos', 'Pinchos carmesí: +daño', 'Pinchos gigantes'][l - 1],
+    apply: (g) => { g.g.thorns = levelOf(g, 'espinas') + 1; },
+    asc: { id: 'asc-espinas', title: 'Erizo', desc: 'Cada poco tiempo el anillo dispara una corona de pinchos hacia fuera.' } },
+  { id: 'orbitales', title: 'Cuchillas orbitales', struct: true, max: 8, rarity: 'epica',
+    desc: 'Cuchillas gigantes girando alrededor de toda la defensa.',
+    next: (l) => ['3 cuchillas en órbita', '+1 cuchilla y más grandes', '+1 cuchilla · más rápidas', 'Segundo anillo en sentido contrario', '+1 cuchilla en cada anillo', 'Cuchillas al rojo: queman', '+1 cuchilla · más daño', 'Tormenta de acero'][l - 1],
+    apply: (g) => { g.g.orbit = levelOf(g, 'orbitales') + 1; },
+    asc: { id: 'asc-orbitales', title: 'Anillo de Saturno', desc: 'El doble de cuchillas, enormes y brillantes.' } },
+  { id: 'faro', title: 'Faro láser', struct: true, max: 6, rarity: 'epica',
+    desc: 'Un rayo que gira desde el núcleo barriendo la pantalla.',
+    next: (l) => ['Se enciende el faro', 'Haz más ancho y fuerte', 'Segundo haz', 'Gira más rápido y quema', 'Tercer haz', 'Cuatro haces al blanco'][l - 1],
+    apply: (g) => { g.g.faro = levelOf(g, 'faro') + 1; },
+    asc: { id: 'asc-faro', title: 'Sol', desc: 'Seis haces que giran y frenan todo lo que tocan.' } },
+  { id: 'minas-nucleo', title: 'Sembrador', struct: true, max: 6, rarity: 'epica',
+    desc: 'El núcleo siembra minas alrededor durante cada oleada.',
+    next: (l) => ['1 mina cada pocos segundos', '2 minas por siembra', 'Minas más potentes', 'Siembra más a menudo', '3 minas por siembra', 'Minas de racimo'][l - 1],
+    apply: (g) => { g.g.coreMines = levelOf(g, 'minas-nucleo') + 1; },
+    asc: { id: 'asc-minas', title: 'Campo minado', desc: 'El suelo se llena de minas: siembra el doble y explotan en cadena.' } },
+  { id: 'arco-nucleo', title: 'Arco eléctrico', struct: true, max: 6, rarity: 'epica',
+    desc: 'El núcleo lanza rayos a los virus más cercanos.',
+    next: (l) => ['2 rayos a la vez', '3 rayos', 'Cada rayo salta a otro virus', '4 rayos · más rápidos', '5 rayos · más daño', '6 rayos que saltan dos veces'][l - 1],
+    apply: (g) => { g.g.arc = levelOf(g, 'arco-nucleo') + 1; },
+    asc: { id: 'asc-arco', title: 'Tormenta', desc: 'Rayos contra todos los virus cercanos a la vez.' } },
+  { id: 'pulso-nucleo', title: 'Latido del núcleo', struct: true, max: 6, rarity: 'epica',
+    desc: 'Una onda automática que daña y aparta a los virus.',
+    next: (l) => ['Primer latido', 'Onda más grande', 'Late más a menudo', 'La onda frena un 40 %', 'Onda más fuerte y grande', 'Latido continuo'][l - 1],
+    apply: (g) => { g.g.corePulse = levelOf(g, 'pulso-nucleo') + 1; },
+    asc: { id: 'asc-pulso', title: 'Supernova', desc: 'Una onda enorme que congela a todos los virus que toca.' } },
+  { id: 'satelite', title: 'Satélite', struct: true, max: 6, rarity: 'epica',
+    desc: 'Satélites que orbitan el núcleo y disparan.',
+    next: (l) => ['Un satélite', '+1 cañón', 'Segundo satélite', '+1 cañón · más rápido', 'Tercer satélite', 'Satélites pesados'][l - 1],
+    apply: (g) => { g.g.turret = levelOf(g, 'satelite') + 1; },
+    asc: { id: 'asc-satelite', title: 'Constelación', desc: 'El doble de satélites con disparos teledirigidos.' } },
+  { id: 'aura', title: 'Aura de daño', struct: true, max: 6, rarity: 'rara',
+    desc: 'Un aura alrededor del núcleo que daña sin parar.',
+    next: (l) => ['Aparece el aura', 'Aura más grande', 'Más daño', 'Aura más grande', 'Más daño', 'Aura máxima'][l - 1],
+    apply: (g) => { g.g.aura = levelOf(g, 'aura') + 1; } },
+  // ── Core ──
+  { id: 'blindaje', title: 'Blindaje', max: 8, next: () => '+20 de integridad máxima y repara 20', desc: '', apply: (g) => { g.maxHp += 20; g.hp = Math.min(g.maxHp, g.hp + 20); } },
+  { id: 'reparacion', title: 'Autorreparación', max: 6, next: () => '+0,6 de reparación por segundo', desc: '', apply: (g) => { g.g.regen += 0.6; } },
+  { id: 'escudo', title: 'Escudo del núcleo', max: 5, next: () => '+1 escudo que bloquea un golpe', desc: 'Se recarga cada 12 s.', apply: (g) => { g.g.shieldMax += 1; g.g.shield += 1; } },
+  { id: 'sobreescudo', title: 'Recarga de escudo', max: 4, next: () => 'El escudo se recarga un 25 % antes', desc: '', ok: (g) => g.g.shieldMax > 0, apply: (g) => { g.g.shieldCd *= 0.75; } },
+  { id: 'frenado', title: 'Campo de frenado', max: 3, next: () => 'Virus cerca del núcleo un 20 % más lentos', desc: '', apply: (g) => { g.g.brake += 0.2; } },
+  { id: 'nova-emergencia', title: 'Nova de emergencia', max: 3, next: () => 'Si te golpean, el núcleo lanza una onda (más a menudo)', desc: '', apply: (g) => { g.g.nova += 1; } },
+  { id: 'copia', title: 'Copia de seguridad', max: 1, next: () => 'Una vez por partida, al caer recuperas el 50 %', desc: '', apply: (g) => { g.g.backup = 1; }, w: 0.6 },
+  // ── Whole defence ──
+  { id: 'potencia', title: 'Potencia global', max: 10, next: () => 'Todos los defensores +12 % de daño', desc: '', apply: (g) => { g.g.dmgMul *= 1.12; }, w: 1.3 },
+  { id: 'overclock', title: 'Overclock', max: 10, next: () => 'Todos los defensores +10 % de cadencia', desc: '', apply: (g) => { g.g.rateMul *= 1.1; }, w: 1.3 },
+  { id: 'optica', title: 'Óptica', max: 5, next: () => 'Todos los defensores +10 % de alcance', desc: '', apply: (g) => { g.g.rangeMul *= 1.1; } },
+  { id: 'suerte', title: 'Suerte', max: 8, next: () => 'Todos +5 % de crítico', desc: '', apply: (g) => { g.g.critAdd += 0.05; } },
+  { id: 'purga', title: 'Protocolo de purga', max: 3, next: () => 'Todos rematan virus por debajo de un 6 % más', desc: '', apply: (g) => { g.g.execute += 0.06; } },
+  { id: 'cazajefes', title: 'Antivirus de élite', max: 5, next: () => '+30 % de daño a jefes y élites', desc: '', apply: (g) => { g.g.bossMul *= 1.3; } },
+  { id: 'primer-golpe', title: 'Primer impacto', max: 4, next: () => '+40 % de daño a virus intactos', desc: '', apply: (g) => { g.g.firstHit += 0.4; } },
+  { id: 'reaccion', title: 'Reacción en cadena', max: 5, next: () => 'Los virus explotan al morir (más fuerte)', desc: '', apply: (g) => { g.g.chainReaction += 0.2; } },
+  { id: 'criogenia', title: 'Criogenia', max: 5, next: () => 'Todos los golpes frenan un 8 % más', desc: '', apply: (g) => { g.g.hitSlow += 0.08; } },
+  { id: 'incendio', title: 'Incendio', max: 6, next: () => 'Todos los golpes queman 2/s más', desc: '', apply: (g) => { g.g.hitBurn += 2; } },
+  // ── Rewards and choices ──
+  { id: 'aprendizaje', title: 'Aprendizaje', max: 6, next: () => '+20 % de experiencia', desc: '', apply: (g) => { g.g.xpMul *= 1.2; } },
+  { id: 'botin', title: 'Botín', max: 5, next: () => '+25 % de energía para tu chip al acabar', desc: '', apply: (g) => { g.g.energyMul += 0.25; }, w: 0.7 },
+  { id: 'recalcular', title: 'Recalcular', max: 5, next: () => '+2 cambios de cartas', desc: '', apply: (g) => { g.g.rerolls += 2; }, w: 0.6 },
+  { id: 'eleccion', title: 'Más opciones', max: 1, next: () => 'A partir de ahora eliges entre 4 cartas', desc: '', ok: (g) => g.g.choices < 4, apply: (g) => { g.g.choices = 4; }, w: 0.5 },
 ];
+export const wallHp = (lvl: number) => (lvl <= 0 ? 0 : 60 + 60 * lvl + (lvl >= 6 ? 20 : 0) + (lvl >= 8 ? 60 : 0));
 
 // ── Pacts: power with a price ──────────────────────────────────────────────
 export const PACT_CARDS: GlobalDef[] = [
@@ -124,16 +181,38 @@ export const PACT_CARDS: GlobalDef[] = [
 
 /** Distinct upgrades in the game (fusions counted once per pair of types). */
 export const FUSION_PAIRS = (DEF_KINDS.length * (DEF_KINDS.length - 1)) / 2;
-export const CATALOGUE_SIZE = DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
+export const CATALOGUE_SIZE = DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
 
 export const kindsOf = (d: Defender): DefKind[] => (d.fuse ? [d.kind, d.fuse.kind] : [d.kind]);
 const owned = (g: Game) => new Set(g.defenders.flatMap(kindsOf));
 
-export function addDefender(g: Game, kind: DefKind): Defender {
+export function addDefender(g: Game, kind: DefKind, at?: number): Defender {
   const d = makeDefender(g.nextId++, kind);
-  g.defenders.push(d);
+  if (at === undefined || at < 0 || at > g.defenders.length) g.defenders.push(d);
+  else g.defenders.splice(at, 0, d);
   refreshSynergies(g);
   return d;
+}
+
+/** Where a new defender can go on the ring: between two neighbours. Sorted by what it would power up. */
+export interface Placement {
+  at: number;
+  left: Defender;
+  right: Defender;
+  syn: string[];
+}
+export function placements(g: Game, kind: DefKind): Placement[] {
+  const n = g.defenders.length;
+  if (n < 3) return [];
+  const out: Placement[] = [];
+  for (let i = 0; i < n; i++) {
+    const left = g.defenders[i];
+    const right = g.defenders[(i + 1) % n];
+    const syn = SYNERGIES.filter((sy) => [left, right].some((d) => kindsOf(d).some((k) => (sy.a === kind && sy.b === k) || (sy.b === kind && sy.a === k)))).map((sy) => sy.name);
+    out.push({ at: i + 1, left, right, syn: [...new Set(syn)] });
+  }
+  out.sort((a, b) => b.syn.length - a.syn.length);
+  return out.slice(0, 4);
 }
 
 /** Recomputes which synergies are active; new ones raise an event for the banner. */
@@ -142,6 +221,16 @@ export function refreshSynergies(g: Game) {
   const now = SYNERGIES.filter((s) => have.has(s.a) && have.has(s.b)).map((s) => s.id);
   for (const id of now) if (!g.syn.includes(id)) g.events.push(`syn:${id}`);
   g.syn = now;
+  // Neighbours on the ring (or both halves of one fusion) make a synergy stronger.
+  const n = g.defenders.length;
+  const adj = (a: DefKind, b: DefKind) =>
+    g.defenders.some((d, i) => {
+      const ks = kindsOf(d);
+      if (ks.includes(a) && ks.includes(b)) return true;
+      if (!ks.includes(a) || n < 2) return false;
+      return [g.defenders[(i + 1) % n], g.defenders[(i - 1 + n) % n]].some((o) => o !== d && kindsOf(o).includes(b));
+    });
+  g.synAdj = SYNERGIES.filter((s) => now.includes(s.id) && adj(s.a, s.b)).map((s) => s.id);
 }
 
 /** Each upgrade makes the invasion a bit tougher: «más mejoras, más vida». */
@@ -156,7 +245,7 @@ function newDefenderCard(g: Game, kind: DefKind): Card {
     key: `new-${kind}`, id: `new-${kind}`, kind: 'new', rarity: 'rara', title: info.name,
     desc: info.desc + (syn.length ? ` Sinergia: ${syn.map((x) => x.name).join(', ')}.` : ''),
     tag: `Nuevo defensor · ${g.defenders.length + 1}/${MAX_DEFENDERS}`, color: info.color,
-    apply: (gg) => { addDefender(gg, kind); gg.g.horde *= 1.06; threaten(gg); },
+    apply: (gg, at) => { addDefender(gg, kind, at); gg.g.horde *= 1.06; threaten(gg); },
   };
 }
 const availableKinds = (g: Game) => g.unlocked.filter((k) => !owned(g).has(k));
@@ -164,7 +253,7 @@ const availableKinds = (g: Game) => g.unlocked.filter((k) => !owned(g).has(k));
 function fusionCard(a: Defender, b: Defender): Card {
   const name = fusionName(a.kind, b.kind);
   return {
-    key: `fus-${a.id}-${b.id}`, id: `fusion-${[a.kind, b.kind].sort().join('+')}`, kind: 'fusion', rarity: 'legendaria', title: name,
+    key: `fus-${a.id}-${b.id}`, id: `fusion-${[a.kind, b.kind].sort().join('+')}`, kind: 'fusion', rarity: 'legendaria', target: a.id, title: name,
     desc: `Fusiona ${defenderName(a)} y ${defenderName(b)}: un solo defensor que hace lo de los dos, ×1,5 más fuerte. Libera un hueco.`,
     tag: 'Fusión legendaria', color: DEF_INFO[a.kind].color, color2: DEF_INFO[b.kind].color,
     apply: (gg) => {
@@ -198,13 +287,27 @@ function cardFor(g: Game, rnd: () => number): Card | null {
     return { key: p.id, id: p.id, kind: 'pact', rarity: 'epica', title: p.title, desc: p.desc, tag: 'Pacto', color: '#ff3b3b', apply: (gg) => { p.apply(gg); threaten(gg); } };
   }
   if (r < newW + 0.1 + 0.32) {
-    const pool = GLOBAL_CARDS.filter((c) => (!c.ok || c.ok(g)) && !(c.once && g.taken.includes(c.id)));
+    // Ascensions: a structure at its top level can transform once.
+    const asc = GLOBAL_CARDS.filter((c) => c.asc && c.max && levelOf(g, c.id) >= c.max && !g.g.asc.includes(c.asc.id));
+    if (asc.length && rnd() < 0.5) {
+      const c = asc[Math.floor(rnd() * asc.length)];
+      const a = c.asc!;
+      return { key: a.id, id: a.id, kind: 'asc', rarity: 'legendaria', title: a.title, desc: a.desc, tag: `Ascensión · ${c.title}`, color: '#ffd60a', apply: (gg) => { gg.g.asc.push(a.id); threaten(gg); } };
+    }
+    const pool = GLOBAL_CARDS.filter((c) => (!c.ok || c.ok(g)) && levelOf(g, c.id) < (c.max ?? 99) && !(c.once && g.taken.includes(c.id)));
     const total = pool.reduce((a, c) => a + (c.w ?? 1), 0);
     let x = rnd() * total;
     const c = pool.find((cc) => (x -= cc.w ?? 1) <= 0) ?? pool[0];
     if (!c) return null;
     const rarity = c.rarity ?? 'rara';
-    return { key: c.id, id: c.id, kind: 'global', rarity, title: c.title, desc: c.desc, tag: rarity === 'epica' ? 'Estructura del núcleo' : 'Núcleo', color: rarity === 'epica' ? '#c8ff2e' : '#e8f6ff', apply: (gg) => { c.apply(gg); threaten(gg); } };
+    const lvl = levelOf(g, c.id) + 1;
+    const step = c.next ? c.next(lvl) : '';
+    const desc = lvl === 1 && c.desc ? `${c.desc} ${step}.` : `${step}.`;
+    return {
+      key: c.id, id: c.id, kind: 'global', rarity, title: c.title, desc,
+      tag: `${c.struct ? 'Estructura' : 'Núcleo'} · nivel ${lvl}/${c.max ?? '∞'}`, color: c.struct ? '#c8ff2e' : '#e8f6ff',
+      apply: (gg) => { c.apply(gg); threaten(gg); },
+    };
   }
   // Stat upgrade on one defender (a fusion upgrades both halves).
   if (!n) return null;
@@ -214,7 +317,7 @@ function cardFor(g: Game, rnd: () => number): Card | null {
   let x = rnd() * total;
   const s = pool.find((c) => (x -= c.w ?? 1) <= 0) ?? pool[0];
   return {
-    key: `${s.id}-${d.id}`, id: `stat-${s.id}`, kind: 'stat', rarity: 'comun', title: s.title(d), desc: s.desc, tag: `${defenderName(d)} · nv ${d.lvl + 1}`, color: DEF_INFO[d.kind].color,
+    key: `${s.id}-${d.id}`, id: `stat-${s.id}`, kind: 'stat', target: d.id, rarity: 'comun', title: s.title(d), desc: s.desc, tag: `${defenderName(d)} · nv ${d.lvl + 1}`, color: DEF_INFO[d.kind].color,
     color2: d.fuse ? DEF_INFO[d.fuse.kind].color : undefined,
     apply: (gg) => {
       const dd = gg.defenders.find((x2) => x2.id === d.id);
@@ -241,7 +344,7 @@ export function offer(g: Game, rnd: () => number): Card[] {
     const opts = evoOptions(d);
     if (opts.length) {
       return opts.map((e) => ({
-        key: e.id, id: e.id, kind: 'evo', rarity: 'epica', title: e.name, desc: e.desc, tag: `Evoluciona ${defenderName(d)}`, color: DEF_INFO[d.kind].color,
+        key: e.id, id: e.id, kind: 'evo', rarity: 'epica', target: d.id, title: e.name, desc: e.desc, tag: `Evoluciona ${defenderName(d)}`, color: DEF_INFO[d.kind].color,
         apply: (gg) => {
           const dd = gg.defenders.find((x) => x.id === d.id);
           if (!dd) return;
@@ -271,8 +374,22 @@ export function offer(g: Game, rnd: () => number): Card[] {
   return out;
 }
 
-export function choose(g: Game, c: Card) {
-  c.apply(g);
+export function choose(g: Game, c: Card, at?: number) {
+  if (c.kind === 'new' && at === undefined) at = placements(g, c.id.slice(4) as DefKind)[0]?.at;
+  c.apply(g, at);
   g.taken.push(c.id);
   g.pending = Math.max(0, g.pending - 1);
+  // Every pick shows up where it happened: a flash and its name.
+  const d = c.kind === 'new' ? g.defenders.find((x) => x.id === g.nextId - 1) : g.defenders.find((x) => x.id === c.target);
+  const gl = GLOBAL_CARDS.find((x) => x.id === c.id);
+  const [x, y] = d ? [d.x, d.y] : gl?.struct ? [0, -(c.id === 'aura' ? 70 : 104)] : [0, 0];
+  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc';
+  g.fx.push({ k: 'ring', x, y, r0: 6, r1: big ? 90 : 44, life: big ? 0.8 : 0.5, max: big ? 0.8 : 0.5, c: c.color, w: big ? 5 : 3 });
+  g.fx.push({ k: 'flash', x, y, r: big ? 50 : 24, life: 0.3, max: 0.3, c: c.color });
+  g.fx.push({ k: 'txt', x, y: y - 18, s: c.title, life: 1.4, max: 1.4, c: c.color });
+  for (let k = 0; k < (big ? 24 : 10); k++) {
+    const a = (k / (big ? 24 : 10)) * Math.PI * 2;
+    const sp = big ? 160 : 100;
+    g.fx.push({ k: 'p', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6, max: 0.6, c: c.color, s: 2.4 });
+  }
 }
