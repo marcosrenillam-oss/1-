@@ -11,6 +11,7 @@ import { IconBack } from '../components/Icons';
 import { haptic } from '../haptics';
 import type { CoreState } from '../engine/core';
 import { chipImage } from '../invasion/coreImage';
+import { Quality } from '../invasion/quality';
 import { mainRing, refreshSynergies } from '../invasion/cards';
 import { DEF_KINDS } from '../invasion/defenders';
 import { MODS, titanName } from '../invasion/sim';
@@ -84,6 +85,9 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     };
   }, [core]);
   const dprRef = useRef(1);
+  const quality = useRef(new Quality(typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1));
+  const fitRef = useRef<() => void>(() => {});
+  const hudSig = useRef('');
   const [prefs, setPrefs] = useState(soundPrefs);
   useEffect(() => onSoundPrefs(() => setPrefs({ ...soundPrefs() })), []);
   const toggleSound = (k: 'sfx' | 'music') => {
@@ -127,7 +131,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     if (!el) return;
     const fit = () => {
       const r = el.getBoundingClientRect();
-      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const dpr = quality.current.step.dpr;
       dprRef.current = dpr;
       const v = view.current;
       v.w = r.width;
@@ -147,11 +151,12 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         g.arenaY = v.h / 2 / v.scale;
       } else if (c) {
         // Before the game starts, show the board.
-        const ctx = c.getContext('2d');
+        const ctx = c.getContext('2d', { alpha: false });
         ctx?.setTransform(1, 0, 0, 1, 0, 0);
         ctx?.drawImage(bg.current, 0, 0);
       }
     };
+    fitRef.current = fit;
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
@@ -161,7 +166,10 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
   // Test hook (only with the e2e flag): lets the browser tests drive the game.
   useEffect(() => {
     try {
-      if (localStorage.getItem('uno-por-ciento:e2e') === '1') (window as unknown as { __inv?: unknown }).__inv = game;
+      if (localStorage.getItem('uno-por-ciento:e2e') === '1') {
+        (window as unknown as { __inv?: unknown }).__inv = game;
+        (window as unknown as { __invQ?: unknown }).__invQ = quality;
+      }
     } catch {
       /* no storage */
     }
@@ -185,10 +193,14 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     let last = performance.now();
     let hudT = 0;
     let musicT = 0;
+    let bgT = 0;
+    let bgDirty = false;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      const real = Math.min(0.05, (now - last) / 1000);
+      const interval = now - last;
+      const real = Math.min(0.05, interval / 1000);
       last = now;
+      const t0 = performance.now();
       const g = game.current;
       const c = canvas.current;
       if (!g || !c) return;
@@ -205,7 +217,14 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         v.scale = Math.min(v.w, v.h) / (WORLD * zoomRef.current);
         g.arena = v.w / 2 / v.scale;
         g.arenaY = v.h / 2 / v.scale;
-        if (bg.current) drawBackground(bg.current, v, dprRef.current);
+        bgDirty = true;
+      }
+      // Redrawing the background is costly: at most ~6 times a second while zooming.
+      bgT -= real;
+      if (bgDirty && bgT <= 0 && bg.current) {
+        drawBackground(bg.current, view.current, dprRef.current);
+        bgDirty = false;
+        bgT = 0.16;
       }
       // Sound
       for (const n of g.sfx) sfx(n);
@@ -290,12 +309,21 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           setPhase('over');
         }, motionMs(1300, 300));
       }
-      const ctx = c.getContext('2d');
-      if (ctx && bg.current) draw(ctx, g, { ...view.current, coreImg: coreImg.current }, bg.current, c.width / view.current.w);
+      const ctx = c.getContext('2d', { alpha: false });
+      const q = quality.current;
+      if (ctx && bg.current) draw(ctx, g, { ...view.current, coreImg: coreImg.current, lite: q.step.lite }, bg.current, c.width / view.current.w);
+      // Adapt effects and resolution to keep the frame rate up.
+      if (q.sample(interval, performance.now() - t0) && q.step.dpr !== dprRef.current) fitRef.current();
       hudT -= dt;
       if (hudT <= 0) {
-        hudT = 0.1;
-        setHud({ wave: g.wave, hp: g.hp, max: g.maxHp, level: g.level, xp: g.xp, need: xpNeed(g.level), kills: g.kills, threat: g.g.enemyHp, defenders: g.defenders.length });
+        hudT = 0.12;
+        // Re-render the HUD only when something it shows has changed.
+        const need = xpNeed(g.level);
+        const sig = `${g.wave}|${Math.round((g.hp / g.maxHp) * 200)}|${g.level}|${Math.floor((g.xp / need) * 60)}|${g.kills}|${g.g.enemyHp.toFixed(2)}|${g.defenders.length}`;
+        if (sig !== hudSig.current) {
+          hudSig.current = sig;
+          setHud({ wave: g.wave, hp: g.hp, max: g.maxHp, level: g.level, xp: g.xp, need, kills: g.kills, threat: g.g.enemyHp, defenders: g.defenders.length });
+        }
       }
     };
     raf = requestAnimationFrame(loop);
@@ -307,7 +335,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     if (phase === 'over') {
       const g = game.current;
       const c = canvas.current;
-      const ctx = c?.getContext('2d');
+      const ctx = c?.getContext('2d', { alpha: false });
       if (g && ctx && bg.current) draw(ctx, g, view.current, bg.current, c!.width / view.current.w);
     }
   }, [phase]);

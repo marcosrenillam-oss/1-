@@ -13,7 +13,78 @@ export interface View {
   color: string;
   /** Your chip from «Tu Núcleo», drawn as the core. */
   coreImg?: HTMLImageElement | null;
+  /** Lite mode: drops the costliest decoration when frames get slow. */
+  lite?: boolean;
 }
+
+/* ── Performance helpers ─────────────────────────────────────────────────
+   Gradients are rebuilt and rasterised every time they are filled, which is
+   what made late waves stutter. Glows are pre-rendered once per colour into
+   small sprites and stamped with drawImage; full-screen vignettes are
+   pre-rendered at low resolution and stretched. */
+const SPR = 64;
+const sprites = new Map<string, HTMLCanvasElement | OffscreenCanvas>();
+function mkCanvas(w: number, h: number): HTMLCanvasElement | OffscreenCanvas {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+/** Soft radial glow of a colour; `hot` adds a white centre (flashes). */
+function sprite(c: string, hot = false) {
+  const key = hot ? c + '*' : c;
+  let sp = sprites.get(key);
+  if (!sp) {
+    sp = mkCanvas(SPR, SPR);
+    const x = sp.getContext('2d') as CanvasRenderingContext2D;
+    const gr = x.createRadialGradient(SPR / 2, SPR / 2, 0, SPR / 2, SPR / 2, SPR / 2);
+    if (hot) {
+      gr.addColorStop(0, 'rgba(255,255,255,1)');
+      gr.addColorStop(0.35, hexA(c, 0.66));
+    } else gr.addColorStop(0, hexA(c, 1));
+    gr.addColorStop(1, hexA(c, 0));
+    x.fillStyle = gr;
+    x.fillRect(0, 0, SPR, SPR);
+    sprites.set(key, sp);
+  }
+  return sp;
+}
+function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string, a: number, hot = false) {
+  if (r <= 0 || a <= 0.004) return;
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * Math.min(1, a);
+  ctx.drawImage(sprite(c, hot) as CanvasImageSource, x - r, y - r, r * 2, r * 2);
+  ctx.globalAlpha = ga;
+}
+/** Edge vignette (transparent centre → colour at the edges), cached per size. */
+const vignettes = new Map<string, HTMLCanvasElement | OffscreenCanvas>();
+function vignette(ctx: CanvasRenderingContext2D, v: View, rgb: string, inner: number, a: number, hole?: { r0: number; r1: number }) {
+  if (a <= 0.004) return;
+  const w = Math.max(8, Math.round(v.w / 6));
+  const h = Math.max(8, Math.round(v.h / 6));
+  const key = `${rgb}|${w}|${h}|${inner}|${hole ? hole.r0 + ',' + hole.r1 : ''}`;
+  let c = vignettes.get(key);
+  if (!c) {
+    if (vignettes.size > 12) vignettes.clear();
+    c = mkCanvas(w, h);
+    const x = c.getContext('2d') as CanvasRenderingContext2D;
+    const k = w / v.w;
+    const gr = hole
+      ? x.createRadialGradient(w / 2, h / 2, hole.r0 * k, w / 2, h / 2, hole.r1 * k)
+      : x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * inner, w / 2, h / 2, Math.max(w, h) * 0.75);
+    gr.addColorStop(0, `rgba(${rgb},0)`);
+    gr.addColorStop(1, `rgba(${rgb},1)`);
+    x.fillStyle = gr;
+    x.fillRect(0, 0, w, h);
+    vignettes.set(key, c);
+  }
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = Math.min(1, a);
+  ctx.drawImage(c as CanvasImageSource, 0, 0, v.w, v.h);
+  ctx.globalAlpha = ga;
+}
+let lite = false;
 
 const TAU = Math.PI * 2;
 
@@ -72,12 +143,24 @@ export function drawBackground(c: HTMLCanvasElement, v: View, dpr: number) {
 const traces: number[][] = [];
 const motes = Array.from({ length: 36 }, (_, i) => ({ x: (i * 0.618) % 1, y: (i * 0.377) % 1, s: 0.6 + ((i * 7) % 5) / 4, v: 0.004 + ((i * 3) % 7) / 1200 }));
 
+/** rgba() of a hex colour. Memoised (alpha to 1/100): these strings are
+ *  built thousands of times a frame and were a steady source of garbage. */
+const rgbaCache = new Map<string, string>();
 export function hexA(hex: string, a: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  const q = a <= 0 ? 0 : a >= 1 ? 100 : Math.round(a * 100);
+  const key = hex + q;
+  let r = rgbaCache.get(key);
+  if (r === undefined) {
+    if (rgbaCache.size > 4000) rgbaCache.clear();
+    const n = parseInt(hex.slice(1), 16);
+    r = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${q / 100})`;
+    rgbaCache.set(key, r);
+  }
+  return r;
 }
 
 export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCanvasElement, dpr: number) {
+  lite = !!v.lite;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(bg, 0, 0);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -176,14 +259,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
       continue;
     }
     if (s.prism) {
-      const gr = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 2.2);
-      gr.addColorStop(0, '#ffffff');
-      gr.addColorStop(0.4, hexA(c, 0.8));
-      gr.addColorStop(1, hexA(c, 0));
-      ctx.fillStyle = gr;
-      ctx.beginPath();
-      arc(ctx, s.x, s.y, s.r * 2.2, 0, TAU);
-      ctx.fill();
+      glow(ctx, s.x, s.y, s.r * 2.2, c, 1, true);
       continue;
     }
     if (s.T !== undefined) {
@@ -235,9 +311,11 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
         ctx.beginPath();
         ctx.moveTo(f.x1, f.y1);
         ctx.lineTo(f.x2, f.y2);
-        ctx.strokeStyle = hexA(f.c, 0.16 * fade);
-        ctx.lineWidth = f.w * 6 * pulse;
-        ctx.stroke();
+        if (!lite) {
+          ctx.strokeStyle = hexA(f.c, 0.16 * fade);
+          ctx.lineWidth = f.w * 6 * pulse;
+          ctx.stroke();
+        }
         ctx.strokeStyle = hexA(f.c, 0.5 * fade);
         ctx.lineWidth = f.w * 2.4 * pulse;
         ctx.stroke();
@@ -259,9 +337,11 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         path();
-        ctx.strokeStyle = hexA(f.c, 0.18 * a);
-        ctx.lineWidth = w * 4.5;
-        ctx.stroke();
+        if (!lite) {
+          ctx.strokeStyle = hexA(f.c, 0.18 * a);
+          ctx.lineWidth = w * 4.5;
+          ctx.stroke();
+        }
         ctx.strokeStyle = hexA(f.c, 0.85 * a);
         ctx.lineWidth = w * 1.4;
         ctx.stroke();
@@ -270,7 +350,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
         ctx.stroke();
         ctx.strokeStyle = hexA(f.c, 0.7 * a);
         ctx.lineWidth = Math.max(1, w * 0.5);
-        for (let i = 4; i < p.length - 2; i += 6) {
+        if (!lite) for (let i = 4; i < p.length - 2; i += 6) {
           const ang = Math.random() * TAU;
           const len = 8 + Math.random() * 14;
           ctx.beginPath();
@@ -282,15 +362,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
         break;
       }
       case 'flash': {
-        const r = f.r * (1.2 - a * 0.4);
-        const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
-        gr.addColorStop(0, `rgba(255,255,255,${0.9 * a})`);
-        gr.addColorStop(0.35, hexA(f.c, 0.6 * a));
-        gr.addColorStop(1, hexA(f.c, 0));
-        ctx.fillStyle = gr;
-        ctx.beginPath();
-        arc(ctx, f.x, f.y, r, 0, TAU);
-        ctx.fill();
+        glow(ctx, f.x, f.y, f.r * (1.2 - a * 0.4), f.c, 0.9 * a, true);
         break;
       }
       case 'ring': {
@@ -302,12 +374,17 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
         ctx.stroke();
         break;
       }
-      case 'p':
+      case 'p': {
         ctx.fillStyle = hexA(f.c, a);
-        ctx.beginPath();
-        arc(ctx, f.x, f.y, f.s * (0.4 + a * 0.6), 0, TAU);
-        ctx.fill();
+        const r = f.s * (0.4 + a * 0.6);
+        if (lite) ctx.fillRect(f.x - r, f.y - r, r * 2, r * 2);
+        else {
+          ctx.beginPath();
+          arc(ctx, f.x, f.y, r, 0, TAU);
+          ctx.fill();
+        }
         break;
+      }
       case 'xp': {
         const k = easeIn(1 - a);
         const x = f.x * (1 - k);
@@ -341,11 +418,14 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
 
   // Floating crit numbers
   ctx.textAlign = 'center';
+  let font = '';
   for (const f of g.fx) {
     if (f.k !== 'txt') continue;
     const big = f.max > 1;
     const z = f.z ? f.z * (1 + Math.max(0, f.life / f.max - 0.75) * 1.5) : big ? 14 : 11;
-    ctx.font = `700 ${Math.round(z)}px "Space Grotesk", Inter, sans-serif`;
+    // Setting a font is parsed every time: only when the size changes.
+    const fz = `700 ${Math.round(z)}px "Space Grotesk", Inter, sans-serif`;
+    if (fz !== font) ctx.font = font = fz;
     const al = Math.min(1, (f.life / f.max) * 1.6);
     if (big) {
       ctx.lineWidth = 3;
@@ -359,22 +439,12 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
 
   // «Apagón»: darkness except around the core.
   if (g.mod === 'apagon' && g.phase === 'wave') {
-    const cx = v.w / 2;
-    const cy = v.h / 2;
     const r = 170 * v.scale;
-    const dk = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * 1.3);
-    dk.addColorStop(0, 'rgba(0,0,0,0)');
-    dk.addColorStop(1, 'rgba(0,0,0,0.93)');
-    ctx.fillStyle = dk;
-    ctx.fillRect(0, 0, v.w, v.h);
+    vignette(ctx, v, '0,0,0', 0, 0.93, { r0: r * 0.6, r1: r * 1.3 });
   }
   // Damage vignette
   if (g.hurt > 0) {
-    const r = ctx.createRadialGradient(v.w / 2, v.h / 2, Math.min(v.w, v.h) * 0.3, v.w / 2, v.h / 2, Math.max(v.w, v.h) * 0.75);
-    r.addColorStop(0, 'rgba(255,40,60,0)');
-    r.addColorStop(1, `rgba(255,40,60,${g.hurt * 0.55})`);
-    ctx.fillStyle = r;
-    ctx.fillRect(0, 0, v.w, v.h);
+    vignette(ctx, v, '255,40,60', 0.3, g.hurt * 0.55);
   }
 }
 
@@ -393,13 +463,7 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
   const R0 = CORE_R * grow;
   // Glow
   ctx.globalCompositeOperation = 'lighter';
-  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, R0 * (3 + evo));
-  glow.addColorStop(0, hexA(evo ? '#ffd60a' : col, 0.3 + n * 0.015));
-  glow.addColorStop(1, hexA(col, 0));
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  arc(ctx, 0, 0, R0 * (3 + evo), 0, TAU);
-  ctx.fill();
+  glow(ctx, 0, 0, R0 * (3 + evo), evo ? '#ffd60a' : col, 0.3 + n * 0.015);
   ctx.globalCompositeOperation = 'source-over';
   // Evolution halos
   if (evo >= 1) {
@@ -520,50 +584,86 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+
+/** Virus sprites, cached per type, boss flag and radius (world units). */
+const VSS = 4; // sprite px per world unit (supersampled for zoom and retina)
+const vsprites = new Map<string, { c: HTMLCanvasElement | OffscreenCanvas; h: number }>();
+function virusSprite(type: Virus['type'], boss: boolean, vr: number) {
+  const rq = Math.max(2, Math.round(vr * 2) / 2);
+  const key = `${type}|${boss ? 1 : 0}|${rq}`;
+  let e = vsprites.get(key);
+  if (!e) {
+    if (vsprites.size > 300) vsprites.clear();
+    const h = rq * 1.38 + (boss ? 3.4 : 1.9) + 3;
+    const px = Math.ceil(h * 2 * VSS);
+    const c = mkCanvas(px, px);
+    const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+    ctx.setTransform(VSS, 0, 0, VSS, px / 2, px / 2);
+    const v = { type, boss, r: rq };
+    const r = rq;
+    const cc = VIRUS[type].color;
+    {
+      const c = cc;
+      const spikes = v.boss ? 14 : v.type === 'mini' ? 6 : v.type === 'tanque' || v.type === 'invocador' ? 10 : 8;
+      // Spikes with knobs
+      ctx.strokeStyle = c;
+      ctx.fillStyle = c;
+      ctx.lineWidth = v.boss ? 3 : 1.8;
+      // One path for all spikes and one for all knobs: 2 draw calls, not 2 per spike.
+      const kr = v.boss ? 3.4 : 1.9;
+      ctx.beginPath();
+      for (let k = 0; k < spikes; k++) {
+        const a = (k / spikes) * TAU;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        ctx.moveTo(ca * r * 0.8, sa * r * 0.8);
+        ctx.lineTo(ca * r * 1.38, sa * r * 1.38);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (let k = 0; k < spikes; k++) {
+        const a = (k / spikes) * TAU;
+        const x2 = Math.cos(a) * r * 1.38;
+        const y2 = Math.sin(a) * r * 1.38;
+        ctx.moveTo(x2 + kr, y2);
+        arc(ctx, x2, y2, kr, 0, TAU);
+      }
+      ctx.fill();
+      // Body
+      ctx.beginPath();
+      arc(ctx, 0, 0, r, 0, TAU);
+      ctx.fillStyle = hexA(c, 0.28);
+      ctx.fill();
+      ctx.lineWidth = v.boss ? 3.2 : 2;
+      ctx.strokeStyle = c;
+      ctx.stroke();
+      // Nucleus
+      ctx.beginPath();
+      arc(ctx, r * 0.18, -r * 0.12, r * 0.38, 0, TAU);
+      ctx.fillStyle = hexA(c, 0.75);
+      ctx.fill();
+      if (v.boss) {
+        ctx.beginPath();
+        arc(ctx, -r * 0.3, r * 0.3, r * 0.18, 0, TAU);
+        ctx.fill();
+      }
+    }
+    e = { c, h: (px / 2) / VSS };
+    vsprites.set(key, e);
+  }
+  return e;
+}
+
 function drawVirus(ctx: CanvasRenderingContext2D, v: Virus, t: number) {
-  const c = VIRUS[v.type].color;
   ctx.save();
   ctx.translate(v.x, v.y);
   ctx.globalAlpha = v.hidden ? 0.16 : 1;
   ctx.rotate(v.spin);
-  const spikes = v.boss ? 14 : v.type === 'mini' ? 6 : v.type === 'tanque' || v.type === 'invocador' ? 10 : 8;
   const r = v.r * (1 + Math.sin(t * 6 + v.id) * 0.04);
-  // Spikes with knobs
-  ctx.strokeStyle = c;
-  ctx.fillStyle = c;
-  ctx.lineWidth = v.boss ? 3 : 1.8;
-  for (let k = 0; k < spikes; k++) {
-    const a = (k / spikes) * TAU;
-    const x1 = Math.cos(a) * r * 0.8;
-    const y1 = Math.sin(a) * r * 0.8;
-    const x2 = Math.cos(a) * r * 1.38;
-    const y2 = Math.sin(a) * r * 1.38;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.beginPath();
-    arc(ctx, x2, y2, v.boss ? 3.4 : 1.9, 0, TAU);
-    ctx.fill();
-  }
-  // Body
-  ctx.beginPath();
-  arc(ctx, 0, 0, r, 0, TAU);
-  ctx.fillStyle = hexA(c, 0.28);
-  ctx.fill();
-  ctx.lineWidth = v.boss ? 3.2 : 2;
-  ctx.strokeStyle = c;
-  ctx.stroke();
-  // Nucleus
-  ctx.beginPath();
-  arc(ctx, r * 0.18, -r * 0.12, r * 0.38, 0, TAU);
-  ctx.fillStyle = hexA(c, 0.75);
-  ctx.fill();
-  if (v.boss) {
-    ctx.beginPath();
-    arc(ctx, -r * 0.3, r * 0.3, r * 0.18, 0, TAU);
-    ctx.fill();
-  }
+  // Body, spikes and nucleus come from a cached sprite: one drawImage per virus.
+  const sp = virusSprite(v.type, !!v.boss, v.r);
+  const k = r / v.r;
+  ctx.drawImage(sp.c as CanvasImageSource, -sp.h * k, -sp.h * k, sp.h * 2 * k, sp.h * 2 * k);
   if (v.el && !v.hidden) {
     const ec = ELEMENTS[v.el as Element].color;
     ctx.fillStyle = ec;
@@ -763,13 +863,7 @@ function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
   // Evolution aura
   if (tier >= 1) {
     ctx.globalCompositeOperation = 'lighter';
-    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 2.4);
-    gl.addColorStop(0, hexA(c, tier === 2 ? 0.45 : 0.25));
-    gl.addColorStop(1, hexA(c, 0));
-    ctx.fillStyle = gl;
-    ctx.beginPath();
-    arc(ctx, 0, 0, R * 2.4, 0, TAU);
-    ctx.fill();
+    glow(ctx, 0, 0, R * 2.4, c, tier === 2 ? 0.45 : 0.25);
     ctx.globalCompositeOperation = 'source-over';
   }
   if (tier === 3) {
@@ -1205,7 +1299,7 @@ function livingMap(ctx: CanvasRenderingContext2D, g: Game, v: View) {
       seg.push(l);
       total += l;
     }
-    for (let pkt = 0; pkt < 2; pkt++) {
+    for (let pkt = 0; pkt < (lite ? 1 : 2); pkt++) {
       // Packets travel inwards, towards the core.
       let d = (1 - ((t * (0.12 + (i % 5) * 0.02) + i * 0.37 + pkt * 0.5) % 1)) * total;
       let k = 0;
@@ -1214,18 +1308,12 @@ function livingMap(ctx: CanvasRenderingContext2D, g: Game, v: View) {
       const f = d / seg[k];
       const x = pts[k * 2] + (pts[k * 2 + 2] - pts[k * 2]) * f;
       const y = pts[k * 2 + 1] + (pts[k * 2 + 3] - pts[k * 2 + 1]) * f;
-      const gr = ctx.createRadialGradient(x, y, 0, x, y, 7);
-      gr.addColorStop(0, hexA(pc, 0.55));
-      gr.addColorStop(1, hexA(pc, 0));
-      ctx.fillStyle = gr;
-      ctx.beginPath();
-      arc(ctx, x, y, 7, 0, TAU);
-      ctx.fill();
+      glow(ctx, x, y, 7, pc, 0.55);
     }
   });
   // Dust
   ctx.fillStyle = hexA(v.color, 0.18);
-  for (const m of motes) {
+  if (!lite) for (const m of motes) {
     const x = ((m.x + t * m.v) % 1) * v.w;
     const y = ((m.y + Math.sin(t * 0.3 + m.x * 9) * 0.02 + 1) % 1) * v.h;
     ctx.beginPath();
@@ -1243,11 +1331,7 @@ function livingMap(ctx: CanvasRenderingContext2D, g: Game, v: View) {
   // Danger tint at the edges (stronger late, pulsing red with a boss)
   const edge = (danger * 0.14 + (boss ? 0.1 + Math.sin(t * 4) * 0.06 : 0));
   if (edge > 0.01) {
-    const r = ctx.createRadialGradient(v.w / 2, v.h / 2, Math.min(v.w, v.h) * 0.35, v.w / 2, v.h / 2, Math.max(v.w, v.h) * 0.75);
-    r.addColorStop(0, 'rgba(255,40,80,0)');
-    r.addColorStop(1, `rgba(255,40,80,${edge})`);
-    ctx.fillStyle = r;
-    ctx.fillRect(0, 0, v.w, v.h);
+    vignette(ctx, v, '255,40,80', 0.35, edge);
   }
 }
 
@@ -1507,13 +1591,7 @@ function drawChips(ctx: CanvasRenderingContext2D, g: Game, t: number) {
     }
     ctx.globalCompositeOperation = 'lighter';
     const glowR = (twin ? 70 : 44) * (1 + L * 0.04);
-    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, glowR);
-    gl.addColorStop(0, hexA(c, 0.3 + L * 0.03));
-    gl.addColorStop(1, hexA(c, 0));
-    ctx.fillStyle = gl;
-    ctx.beginPath();
-    arc(ctx, 0, 0, glowR, 0, TAU);
-    ctx.fill();
+    glow(ctx, 0, 0, glowR, c, 0.3 + L * 0.03);
     ctx.globalCompositeOperation = 'source-over';
     if (L >= 10) {
       ctx.fillStyle = '#ffd60a';

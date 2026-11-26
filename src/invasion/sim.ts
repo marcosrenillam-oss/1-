@@ -6,7 +6,7 @@ export const CORE_R = 22;
 export const RING_R = 64;
 export const WALL_R = 102;
 export const ORBIT_R = 132;
-const MAX_FX = 700;
+const MAX_FX = 520;
 const MAX_ALIVE = 300;
 /** Viruses that linger get enraged: faster, and in the end immune to slows and pushes. */
 const RAGE_T = 25;
@@ -1880,7 +1880,18 @@ function updateStructures(g: Game, dt: number) {
     }
   }
 }
-const levelOfTaken = (g: Game, id: string) => g.taken.reduce((n, t) => n + (t === id ? 1 : 0), 0);
+/** Count of a taken card, cached until the build changes (was a scan per virus per frame). */
+const takenCount = new WeakMap<Game, { n: number; m: Map<string, number> }>();
+function levelOfTaken(g: Game, id: string): number {
+  let c = takenCount.get(g);
+  if (!c || c.n !== g.taken.length) {
+    const m = new Map<string, number>();
+    for (const t of g.taken) m.set(t, (m.get(t) ?? 0) + 1);
+    c = { n: g.taken.length, m };
+    takenCount.set(g, c);
+  }
+  return c.m.get(id) ?? 0;
+}
 
 // ── Core ──────────────────────────────────────────────────────────────────
 function coreHit(g: Game, v: Virus) {
