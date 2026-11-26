@@ -37,7 +37,14 @@ export interface Drag {
   ok: boolean;
 }
 
-export function drawEnlace(ctx: CanvasRenderingContext2D, g: EGame, v: EView, dpr: number, drag: Drag | null, trail: { x: number; y: number }[]) {
+/** Your chip's look from «Tu Núcleo» for your own chips. */
+export interface Skin {
+  color: string;
+  body: string;
+  edge: string;
+}
+export function drawEnlace(ctx: CanvasRenderingContext2D, g: EGame, v: EView, dpr: number, drag: Drag | null, trail: { x: number; y: number }[], skin?: Skin) {
+  const ownerColor = (o: number) => (o === 1 && skin ? skin.color : OWNER_COLOR[o]);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#0b0c0e';
   ctx.fillRect(0, 0, v.w, v.h);
@@ -75,7 +82,7 @@ export function drawEnlace(ctx: CanvasRenderingContext2D, g: EGame, v: EView, dp
   for (const l of g.links) {
     const a = byId.get(l.from)!;
     const b = byId.get(l.to)!;
-    const c = OWNER_COLOR[l.owner];
+    const c = ownerColor(l.owner);
     const d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     const ux = (b.x - a.x) / d;
     const uy = (b.y - a.y) / d;
@@ -138,7 +145,7 @@ export function drawEnlace(ctx: CanvasRenderingContext2D, g: EGame, v: EView, dp
   for (const n of g.nodes) {
     const p = P(n.x, n.y);
     const r = nodeR(n) * S;
-    const c = OWNER_COLOR[n.owner];
+    const c = ownerColor(n.owner);
     const frac = Math.max(0, Math.min(1, n.value / n.max));
     // Glow
     if (n.owner) {
@@ -183,7 +190,7 @@ export function drawEnlace(ctx: CanvasRenderingContext2D, g: EGame, v: EView, dp
       const k = r * 0.82;
       ctx.roundRect(p.x - k, p.y - k, k * 2, k * 2, r * 0.25);
     }
-    ctx.fillStyle = '#121418';
+    ctx.fillStyle = n.owner === 1 && skin ? skin.body : '#121418';
     ctx.fill();
     ctx.strokeStyle = n.flash > 0 ? '#ffffff' : c;
     ctx.lineWidth = 2 * S;

@@ -24,6 +24,7 @@ export function defaultGlobals(): Globals {
     dmgMul: 1, rateMul: 1, rangeMul: 1, critAdd: 0, xpMul: 1, energyMul: 1, regen: 0, shieldMax: 0, shield: 0, shieldCd: 12, shieldT: 0, aura: 0, brake: 0,
     wall: 0, wallMax: 0, thorns: 0, orbit: 0, orbitA: 0, faro: 0, faroA: 0, coreMines: 0, coreMinesT: 2, arc: 0, arcT: 1, corePulse: 0, corePulseT: 3, asc: [], ascT: 0, wallT: 0,
     nova: 0, novaT: 0, rerolls: 1, choices: 3, execute: 0, bossMul: 1, firstHit: 0, chainReaction: 0, hitSlow: 0, hitBurn: 0,
+    coreEvo: 0, elBonus: {}, chipFast: 0,
     backup: 0, turret: 0, turretCd: 0, enemyHp: 1, enemySpeed: 1, horde: 1, extraBoss: 0, bossNext: 0, bossBounty: 0, eliteChance: 0, waveSpeed: 1,
   };
 }
@@ -41,13 +42,18 @@ export interface StartOpts {
   wall?: number;
   xp?: number;
   unlocked?: DefKind[];
+  /** First defender (instead of the cannon). */
+  start?: DefKind;
+  /** +damage per element. */
+  elBonus?: Record<string, number>;
+  chipFast?: number;
 }
 
 export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) | 0, arena = 300, arenaY = arena, o: StartOpts = {}): Game {
   const g: Game = {
     t: 0, arena, arenaY, wave: 0, waveT: 0, waveLen: 0, phase: 'break', breakT: 1.6, spawns: [], hp: 100, maxHp: 100, g: defaultGlobals(), defenders: [], viruses: [], shots: [], fx: [],
     xp: 0, level: 1, pending: 0, kills: 0, bosses: 0, taken: [], ring: 0, zones: [], syn: [], synAdj: [], unlocked: [...new Set([...BASE_KINDS, ...(o.unlocked ?? [])])],
-    shake: 0, hurt: 0, over: false, nextId: 1, seed, events: [], chips: 1, sfx: [],
+    shake: 0, hurt: 0, over: false, nextId: 1, seed, events: [], chips: 1, sfx: [], slowmo: 0,
   };
   g.maxHp = g.hp = 100 + (o.hp ?? 0);
   g.g.dmgMul *= 1 + (o.dmg ?? 0);
@@ -61,8 +67,11 @@ export function newGame(seed = (Date.now() ^ (Math.random() * 1e9)) | 0, arena =
     g.taken.push('muro');
   }
   g.pending = o.cards ?? 0;
-  addDefender(g, 'canon');
-  const pool = g.unlocked.filter((k) => k !== 'canon' && k !== 'mortero');
+  g.g.elBonus = { ...(o.elBonus ?? {}) };
+  g.g.chipFast = o.chipFast ?? 0;
+  const first = o.start && g.unlocked.includes(o.start) ? o.start : 'canon';
+  addDefender(g, first);
+  const pool = g.unlocked.filter((k) => k !== first && k !== 'mortero');
   for (let k = 0; k < 1 + (o.defenders ?? 0); k++) {
     const left = pool.filter((x) => !g.defenders.some((d) => d.kind === x));
     if (left.length) addDefender(g, left[Math.floor(rand(g) * left.length)]);
@@ -98,8 +107,21 @@ export const VIRUS: Record<VirusType, VDef> = {
   espectro: { hp: 21, sp: 0.55, r: 26, dmg: 25, xp: 25, boss: true, color: '#b9b3ff' },
   acorazado: { hp: 25, sp: 0.4, r: 30, dmg: 25, xp: 25, boss: true, armor: 0.45, color: '#6b7cff' },
   hidra: { hp: 18, sp: 0.5, r: 28, dmg: 25, xp: 15, boss: true, color: '#ff4fd8' },
+  titan: { hp: 140, sp: 0.3, r: 46, dmg: 60, xp: 120, boss: true, armor: 0.2, color: '#ff1f4f' },
 };
-export const BOSS_NAMES: Partial<Record<VirusType, string>> = { coloso: 'Coloso', reina: 'Reina del enjambre', espectro: 'Espectro', acorazado: 'Acorazado', hidra: 'Hidra' };
+export const BOSS_NAMES: Partial<Record<VirusType, string>> = { coloso: 'Coloso', reina: 'Reina del enjambre', espectro: 'Espectro', acorazado: 'Acorazado', hidra: 'Hidra', titan: 'Titán' };
+export const TITANS = ['Leviatán', 'Omega', 'Behemot', 'Quimera', 'Singularidad negra', 'El Último'];
+export const titanName = (wave: number) => TITANS[Math.min(TITANS.length - 1, Math.floor(wave / 25) - 1)] ?? 'Titán';
+/** Random wave modifiers (no warning: they show when the wave starts). */
+export const MODS: Record<string, { name: string; desc: string }> = {
+  apagon: { name: 'Apagón', desc: 'Solo ves los virus cerca del núcleo' },
+  tormenta: { name: 'Tormenta', desc: 'Caen rayos y lo eléctrico pega más' },
+  elites: { name: 'Lluvia de élites', desc: 'La mitad son élites' },
+  dorada: { name: 'Oleada dorada', desc: 'Doble de experiencia' },
+  enjambre: { name: 'Enjambre', desc: 'Muchos más virus, más débiles' },
+  blindados: { name: 'Blindados', desc: 'Todos llevan blindaje' },
+  rapidos: { name: 'Estampida', desc: 'Los virus corren más' },
+};
 const BOSSES: VirusType[] = ['coloso', 'reina', 'espectro', 'acorazado', 'hidra'];
 const UNLOCK: [VirusType, number, number][] = [
   ['basico', 1, 3], ['rapido', 2, 2], ['tanque', 3, 1], ['zigzag', 4, 1.5], ['divisor', 6, 1], ['escudo', 7, 1], ['kamikaze', 7, 1],
@@ -134,6 +156,13 @@ function startWave(g: Game) {
       for (let k = 0; k < 4 && spawns.length < n; k++) spawns.push({ at: at + k * 0.12, type: t, angle: angle + (rand(g) - 0.5) * 0.18 });
     } else spawns.push({ at, type: pick(), elite: rand(g) < g.g.eliteChance });
   }
+  // A random modifier now and then.
+  g.mod = w >= 6 && rand(g) < 0.3 ? Object.keys(MODS)[Math.floor(rand(g) * Object.keys(MODS).length)] : undefined;
+  if (g.mod === 'enjambre') for (let k = Math.round(spawns.length * 0.7); k > 0; k--) spawns.push({ at: rand(g) * len, type: 'mini' });
+  if (g.mod === 'elites') for (const sp of spawns) if (rand(g) < 0.5) sp.elite = true;
+  if (g.mod) g.events.push(`mod:${g.mod}`);
+  // Every 25 waves: a titan.
+  if (w % 25 === 0) spawns.push({ at: len * 0.15, type: 'titan' });
   const boss = isBossWave(w) || g.g.bossNext;
   if (boss) {
     const count = 1 + Math.floor(Math.max(0, g.defenders.length - 3) / 3) + g.g.extraBoss;
@@ -154,13 +183,13 @@ function spawnVirus(g: Game, type: VirusType, opts: { x?: number; y?: number; el
   const A = Math.min(g.arena / Math.max(1e-3, Math.abs(ca)), g.arenaY / Math.max(1e-3, Math.abs(sa))) + 26;
   const w = Math.max(1, g.wave);
   const eliteMul = opts.elite ? 3 : 1;
-  const max = hpAt(w) * d.hp * g.g.enemyHp * eliteMul * (opts.maxMul ?? 1);
+  const max = hpAt(w) * d.hp * g.g.enemyHp * eliteMul * (opts.maxMul ?? 1) * (g.mod === 'enjambre' && !d.boss ? 0.6 : 1);
   const v: Virus = {
     id: g.nextId++, type, x: opts.x ?? ca * A, y: opts.y ?? sa * A, r: d.r * (opts.elite ? 1.35 : 1) * (opts.maxMul && opts.maxMul < 1 ? 0.78 : 1),
-    hp: max, max, shield: d.shield ? max * d.shield : 0, speed: 32 * Math.min(1.7, 1 + 0.015 * (w - 1)) * d.sp * g.g.enemySpeed, armor: d.armor ?? 0, dmg: d.dmg * (opts.elite ? 1.5 : 1),
+    hp: max, max, shield: d.shield ? max * d.shield : 0, speed: 32 * Math.min(1.7, 1 + 0.015 * (w - 1)) * d.sp * g.g.enemySpeed * (g.mod === 'rapidos' ? 1.35 : 1), armor: Math.min(0.7, (d.armor ?? 0) + (g.mod === 'blindados' ? 0.3 : 0)), dmg: d.dmg * (opts.elite ? 1.5 : 1),
     xp: d.xp * (opts.elite ? 3 : 1), boss: !!d.boss, elite: !!opts.elite, gen: opts.gen ?? 0, slowF: 0, slowT: 0, burn: 0, burnT: 0, flash: 0, spin: rand(g) * 6, kb: 0, t: 0,
     timer: 1 + rand(g) * 2, hidden: false, dead: false, hits: {},
-    el: d.boss ? BOSS_EL[type] : w >= 3 ? ELEMENT_LIST[Math.floor(rand(g) * ELEMENT_LIST.length)] : undefined,
+    el: d.boss ? BOSS_EL[type] ?? ELEMENT_LIST[Math.floor(rand(g) * ELEMENT_LIST.length)] : w >= 3 ? ELEMENT_LIST[Math.floor(rand(g) * ELEMENT_LIST.length)] : undefined,
   };
   g.viruses.push(v);
   return v;
@@ -220,7 +249,9 @@ export function hit(g: Game, v: Virus, dmg: number, o: HitOpts = {}) {
   // Elements: super effective ×1.6, not very effective ×0.6.
   const att = (o.el as Element | undefined) ?? (o.kind ? DEF_EL[o.kind] : undefined);
   const eff = effectiveness(att, v.el as Element | undefined);
-  d *= eff;
+  d *= eff * (1 + (att ? g.g.elBonus[att] ?? 0 : 0));
+  if (g.mod === 'tormenta' && att === 'electrico') d *= 1.5;
+  if (v.vuln && v.vuln > 0) d *= v.vulnDeep ? 2 : 1.5;
   if (eff > 1.3 && !o.quiet && rand(g) < 0.15 && g.fx.length < MAX_FX) g.fx.push({ k: 'txt', x: v.x, y: v.y - v.r - 10, s: '¡Eficaz!', life: 0.7, max: 0.7, c: ELEMENTS[att!].color });
   let crit = false;
   if (rand(g) < (o.crit ?? 0.05) + g.g.critAdd) {
@@ -254,7 +285,15 @@ export function hit(g: Game, v: Virus, dmg: number, o: HitOpts = {}) {
   }
   const ex = Math.max(o.execute ?? 0, g.g.execute) * (v.boss ? 0.4 : 1);
   if (ex > 0 && v.hp > 0 && v.hp / v.max < ex) v.hp = 0;
-  if (crit && !o.quiet && g.fx.length < MAX_FX) g.fx.push({ k: 'txt', x: v.x, y: v.y - v.r, s: fmtDmg(d), life: 0.6, max: 0.6, c: '#ffd60a' });
+  if (crit && !o.quiet && g.fx.length < MAX_FX) {
+    // Big crits get big numbers.
+    const z = Math.min(26, 12 + Math.log10(1 + d / Math.max(1, hpAt(g.wave) * 0.3)) * 9);
+    g.fx.push({ k: 'txt', x: v.x + (rand(g) - 0.5) * 8, y: v.y - v.r, s: fmtDmg(d), life: 0.8, max: 0.8, c: z > 18 ? '#ff8a1f' : '#ffd60a', z });
+  }
+  if (v.boss && v.hp > 0) {
+    const ph = v.hp < v.max * 0.33 ? 2 : v.hp < v.max * 0.66 ? 1 : 0;
+    if (ph > (v.phase ?? 0)) bossPhase(g, v, ph);
+  }
   if (v.hp <= 0) kill(g, v, o.src ?? null);
 }
 const fmtDmg = (d: number) => (d >= 1e6 ? `${(d / 1e6).toFixed(1)}M` : d >= 1e3 ? `${(d / 1e3).toFixed(1)}k` : String(Math.round(d)));
@@ -265,7 +304,21 @@ function kill(g: Game, v: Virus, src: Defender | null) {
   g.kills += 1;
   g.sfx.push(v.boss ? 'bossdie' : 'kill');
   if (src) src.kills += 1;
-  g.xp += v.xp * g.g.xpMul;
+  g.xp += v.xp * g.g.xpMul * (g.mod === 'dorada' ? 2 : 1);
+  if (v.vuln && v.vulnSpread) {
+    const o = nearest(g, v.x, v.y, 90, new Set([v.id]));
+    if (o) {
+      o.vuln = 4;
+      o.vulnDeep = v.vulnDeep;
+      o.vulnSpread = true;
+    }
+  }
+  if (v.type === 'titan') {
+    g.pending += 3;
+    g.bosses += 2;
+    g.events.push('titankill');
+    g.slowmo = 1.2;
+  } else if (v.boss) g.slowmo = Math.max(g.slowmo, 0.5);
   const c = VIRUS[v.type].color;
   burst(g, v.x, v.y, c, v.boss ? 40 : 10, v.boss ? 220 : 140, v.boss ? 3.4 : 2.3);
   if (g.fx.length < MAX_FX) g.fx.push({ k: 'flash', x: v.x, y: v.y, r: v.r * 1.8, life: 0.16, max: 0.16, c });
@@ -318,7 +371,7 @@ function nearest(g: Game, x: number, y: number, range: number, skip?: Set<number
   let best: Virus | null = null;
   let bd = range * range;
   for (const v of g.viruses) {
-    if (v.dead || v.hidden || skip?.has(v.id)) continue;
+    if (v.dead || v.hidden || v.hacked || skip?.has(v.id)) continue;
     const d = dist2(v, { x, y }) - v.r * v.r;
     if (d < bd) {
       bd = d;
@@ -330,7 +383,7 @@ function nearest(g: Game, x: number, y: number, range: number, skip?: Set<number
 function nearestN(g: Game, x: number, y: number, range: number, n: number): Virus[] {
   const list: [number, Virus][] = [];
   for (const v of g.viruses) {
-    if (v.dead || v.hidden) continue;
+    if (v.dead || v.hidden || v.hacked) continue;
     const d = dist2(v, { x, y });
     if (d < (range + v.r) ** 2) list.push([d, v]);
   }
@@ -340,7 +393,7 @@ function nearestN(g: Game, x: number, y: number, range: number, n: number): Viru
 /** The toughest viruses in range (snipers pick these). */
 function toughestN(g: Game, x: number, y: number, range: number, n: number): Virus[] {
   const list: Virus[] = [];
-  for (const v of g.viruses) if (!v.dead && !v.hidden && dist2(v, { x, y }) < (range + v.r) ** 2) list.push(v);
+  for (const v of g.viruses) if (!v.dead && !v.hidden && !v.hacked && dist2(v, { x, y }) < (range + v.r) ** 2) list.push(v);
   list.sort((a, b) => b.hp + (b.boss ? 1e9 : 0) - (a.hp + (a.boss ? 1e9 : 0)));
   return list.slice(0, n);
 }
@@ -438,11 +491,15 @@ function shot(d: Defender, u: Unit, s: Stats, o: Partial<Shot>): Shot {
 
 function updateDefender(g: Game, d: Defender, idx: number, dt: number) {
   if (d.over) d.over = Math.max(0, d.over - dt);
+  if (d.stun && d.stun > 0) {
+    d.stun -= dt;
+    return;
+  }
   runUnit(g, d, d as Unit, idx, dt);
   if (d.fuse) runUnit(g, d, d.fuse as Unit, idx, dt);
   // Ultimate: charges over time, fires when there is something to hit.
   d.ult = Math.min(1, (d.ult ?? 0) + (dt / ULT_TIME) * (1 + d.lvl * 0.03));
-  if (d.ult >= 1 && nearest(g, d.x, d.y, Math.max(280, d.stats.range * g.g.rangeMul)) && fireUlt(g, d)) {
+  if (d.ult >= 1 && (nearest(g, d.x, d.y, Math.max(280, d.stats.range * g.g.rangeMul)) || nearest(g, 0, 0, 220)) && fireUlt(g, d)) {
     d.ult = 0;
     const name = ULTS[d.kind].name;
     g.fx.push({ k: 'txt', x: d.x, y: d.y - 22, s: name, life: 1.4, max: 1.4, c: DEF_INFO[d.kind].color });
@@ -755,6 +812,94 @@ function runExclusive(g: Game, d: Defender, u: Unit, s: Stats, dt: number, commo
   u.cd -= dt;
   if (u.cd > 0) return;
   switch (u.kind) {
+    case 'rastreador': {
+      const list = g.viruses.filter((v) => !v.dead && !v.hidden && !v.vuln && dist2(v, d) < (R + v.r) ** 2).sort((a, b) => b.hp - a.hp).slice(0, Math.round(s.count));
+      if (!list.length) return;
+      u.cd = 1 / rate;
+      for (const v of list) {
+        v.vuln = u.flags.long ? 8 : 4;
+        v.vulnDeep = !!u.flags.deep;
+        v.vulnSpread = !!u.flags.spread;
+        if (s.slow) {
+          v.slowF = Math.max(v.slowF, s.slow);
+          v.slowT = Math.max(v.slowT, v.vuln);
+        }
+        hit(g, v, s.dmg, { ...common, quiet: true });
+        g.fx.push({ k: 'beam', x1: d.x, y1: d.y, x2: v.x, y2: v.y, c: color, w: 1.2, life: 0.18, max: 0.18 });
+      }
+      return;
+    }
+    case 'senuelo': {
+      const t = nearest(g, 0, 0, R + 120);
+      if (!t) return;
+      u.cd = 1 / rate;
+      const a = Math.atan2(t.y, t.x);
+      for (let k = 0; k < Math.round(s.count); k++) {
+        const aa = a + (k - (s.count - 1) / 2) * 0.5;
+        decoy(g, d, Math.cos(aa) * (WALL_R + 26), Math.sin(aa) * (WALL_R + 26), s, u.flags);
+      }
+      return;
+    }
+    case 'iman': {
+      const a = toughestN(g, d.x, d.y, R, 3).find((v) => !v.boss && !v.held);
+      if (!a) return;
+      const b = nearest(g, a.x, a.y, 160, new Set([a.id]));
+      if (!b) return;
+      u.cd = 1 / rate;
+      a.held = { to: b.id, dmg: s.dmg * g.g.dmgMul * passive(g.wave) };
+      g.fx.push({ k: 'beam', x1: d.x, y1: d.y, x2: a.x, y2: a.y, c: color, w: 2, life: 0.3, max: 0.3 });
+      return;
+    }
+    case 'clonador': {
+      // Copies a random other defender's normal attack at 70 %.
+      const others = g.defenders.filter((x) => x !== d && x.kind !== 'clonador' && x.kind !== 'crisol');
+      if (!others.length) return;
+      let m = mimic.get(d.id);
+      if (!m || m.t <= 0 || !others.some((x) => x.kind === m!.u.kind)) {
+        const pick = others[Math.floor(rand(g) * others.length)];
+        m = { t: 4, u: { kind: pick.kind, stats: { ...pick.stats, dmg: pick.stats.dmg * 0.7 * (1 + d.lvl * 0.1) }, flags: { ...pick.flags }, cd: 0, spin: 0, pending: 0, lockId: -1, lockT: 0, aim: 0 } };
+        mimic.set(d.id, m);
+        g.fx.push({ k: 'txt', x: d.x, y: d.y - 16, s: `Copia: ${DEF_INFO[pick.kind].name}`, life: 1, max: 1.05, c: DEF_INFO[pick.kind].color });
+      }
+      m.t -= dt;
+      u.cd = 0;
+      if (m.u.kind !== 'clonador') runUnit(g, d, m.u, 0, dt);
+      return;
+    }
+    case 'burbuja': {
+      const list = g.viruses.filter((v) => !v.dead && !v.hidden && !v.bubble && !v.boss && dist2(v, d) < (R + v.r) ** 2).sort((a, b) => dist2(a, { x: 0, y: 0 }) - dist2(b, { x: 0, y: 0 })).slice(0, Math.round(s.count));
+      if (!list.length) return;
+      u.cd = 1 / rate;
+      for (const v of list) {
+        v.bubble = 2.4;
+        v.bubbleDmg = s.dmg * 2 * g.g.dmgMul * passive(g.wave);
+        g.sfx.push('beam');
+      }
+      return;
+    }
+    case 'hacker': {
+      const list = g.viruses.filter((v) => !v.dead && !v.hidden && !v.hacked && !v.boss && dist2(v, d) < (R + v.r) ** 2).sort((a, b) => b.hp - a.hp).slice(0, Math.round(s.count));
+      if (!list.length) return;
+      u.cd = 1 / rate;
+      for (const v of list) hack(g, d, v, color);
+      return;
+    }
+    case 'fractal': {
+      const t = nearest(g, d.x, d.y, R);
+      if (!t) return;
+      u.cd = 1 / rate;
+      const a = Math.atan2(t.y - d.y, t.x - d.x);
+      g.shots.push(shot(d, u, s, { x: d.x, y: d.y, px: d.x, py: d.y, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed, r: 4, life: 1.6, homing: 0, pierce: 0, frac: 0, fracT: 0.22 }));
+      muzzle(g, d.x, d.y, a, color);
+      return;
+    }
+    case 'eclipse': {
+      const t = nearest(g, 0, 0, 400);
+      if (!t) return;
+      u.cd = 1 / rate;
+      eclipse(g, d, t, s);
+      return;
+    }
     case 'refractor': {
       const t = nearest(g, d.x, d.y, R);
       if (!t) return;
@@ -846,6 +991,125 @@ function runExclusive(g: Game, d: Defender, u: Unit, s: Stats, dt: number, commo
       reap(g, d, R, s.dmg * (1 + (d.stacks ?? 0) * 0.02), s.execute, color, common);
       return;
     }
+  }
+}
+
+const mimic = new Map<number, { t: number; u: Unit }>();
+function decoy(g: Game, d: Defender, x: number, y: number, s: Stats, f: Record<string, number>) {
+  const hp = 60 * coreScale(g.wave) * (f.tough ? 3 : 1);
+  g.zones.push({ k: 'decoy', x, y, r: 60, t: 7, max: hp, dps: hp, slow: s.slow, pull: 0, burn: s.burn, dmg: s.dmg * g.g.dmgMul * passive(g.wave), split: 0, src: d.id, flags: {} });
+  burst(g, x, y, '#9fd3ff', 8, 90, 2);
+}
+function hack(g: Game, d: Defender, v: Virus, color: string) {
+  v.hacked = 5 + d.lvl * 0.2;
+  g.fx.push({ k: 'beam', x1: d.x, y1: d.y, x2: v.x, y2: v.y, c: color, w: 1.5, life: 0.3, max: 0.3 });
+  burst(g, v.x, v.y, color, 8, 90, 1.8);
+  g.sfx.push('zap');
+}
+function eclipse(g: Game, d: Defender, t: Virus, s: Stats) {
+  // A shadow that sweeps across the board through the target.
+  const a = Math.atan2(t.y, t.x) + Math.PI / 2;
+  const x = t.x - Math.cos(a) * 220;
+  const y = t.y - Math.sin(a) * 220;
+  g.zones.push({ k: 'eclipse', x, y, r: s.splash || 70, t: 5, max: 5, dps: s.dmg * g.g.dmgMul * passive(g.wave), slow: 0.35, pull: 0, burn: 0, dmg: 0, split: 0, src: d.id, flags: { vx: Math.cos(a) * 90, vy: Math.sin(a) * 90 } });
+}
+/** States that move a virus by themselves: magnet, bubble, hack. Returns true if it handled the movement. */
+function special(g: Game, v: Virus, dt: number): boolean {
+  if (v.held) {
+    const b = g.viruses.find((o) => o.id === v.held!.to && !o.dead);
+    if (!b) {
+      v.held = undefined;
+      return false;
+    }
+    const dx = b.x - v.x;
+    const dy = b.y - v.y;
+    const L = Math.hypot(dx, dy) || 1;
+    if (L < v.r + b.r) {
+      const dmg = v.held.dmg + v.max * 0.15;
+      v.held = undefined;
+      impact(g, b.x, b.y, '#ff5f8f', 22);
+      g.shake = Math.max(g.shake, 3);
+      hit(g, b, dmg, { raw: true, kind: 'iman' });
+      hit(g, v, dmg, { raw: true, kind: 'iman', quiet: true });
+      g.sfx.push('boom');
+      return true;
+    }
+    v.x += (dx / L) * 420 * dt;
+    v.y += (dy / L) * 420 * dt;
+    return true;
+  }
+  if (v.bubble) {
+    v.bubble -= dt;
+    const L = Math.hypot(v.x, v.y) || 1;
+    v.x += (v.x / L) * 40 * dt;
+    v.y += (v.y / L) * 40 * dt;
+    if (v.bubble <= 0) {
+      v.bubble = undefined;
+      ring(g, v.x, v.y, v.r, v.r + 30, '#9ff0ff', 0.35, 3);
+      burst(g, v.x, v.y, '#9ff0ff', 12, 140, 1.8);
+      for (const o of g.viruses) if (!o.dead && dist2(o, v) < (40 + o.r) ** 2) hit(g, o, o === v ? v.bubbleDmg ?? 0 : (v.bubbleDmg ?? 0) * 0.4, { raw: true, quiet: o !== v, kind: 'burbuja' });
+    }
+    return true;
+  }
+  if (v.hacked) {
+    v.hacked -= dt;
+    if (v.hacked <= 0) {
+      v.hacked = undefined;
+      kill(g, v, null);
+      return true;
+    }
+    // Fights for you: chases the closest virus and bites it.
+    let best: Virus | null = null;
+    let bd = Infinity;
+    for (const o of g.viruses) {
+      if (o === v || o.dead || o.hacked) continue;
+      const dd = dist2(o, v);
+      if (dd < bd) {
+        bd = dd;
+        best = o;
+      }
+    }
+    if (best) {
+      const L = Math.sqrt(bd) || 1;
+      if (L > v.r + best.r) {
+        v.x += ((best.x - v.x) / L) * v.speed * 1.8 * dt;
+        v.y += ((best.y - v.y) / L) * v.speed * 1.8 * dt;
+      } else hit(g, best, Math.max(v.dmg * 6, v.max * 0.35) * dt, { raw: true, quiet: true, kind: 'hacker' });
+    }
+    return true;
+  }
+  if (v.type === 'titan') {
+    v.timer -= 0;
+    const key = 'titanEmp';
+    const tm = v.hits as unknown as Record<string, number>;
+    tm[key] = (tm[key] ?? 6) - dt;
+    if (tm[key] <= 0) {
+      tm[key] = 6;
+      // EMP: stuns the defenders near it.
+      ring(g, v.x, v.y, v.r, 260, '#ff1f4f', 0.7, 6);
+      for (const d of g.defenders) if (dist2(d, v) < 260 ** 2) d.stun = 1.6;
+      g.events.push('emp');
+      g.shake = Math.max(g.shake, 8);
+      for (let k = 0; k < 3; k++) spawnVirus(g, 'tanque', { x: v.x + (rand(g) - 0.5) * 60, y: v.y + (rand(g) - 0.5) * 60, elite: true, gen: 1 });
+    }
+  }
+  return false;
+}
+function bossPhase(g: Game, v: Virus, ph: number) {
+  v.phase = ph;
+  g.events.push(`phase:${ph + 1}`);
+  g.slowmo = 0.7;
+  g.shake = Math.max(g.shake, 10);
+  ring(g, v.x, v.y, v.r, v.r * 5, '#ff3b5c', 0.8, 6);
+  if (ph === 1) {
+    // Phase 2: armour up and speed up.
+    v.shield = Math.max(v.shield, v.max * 0.25);
+    v.speed *= 1.25;
+  } else {
+    // Phase 3: calls in reinforcements and goes berserk.
+    for (let k = 0; k < 6; k++) spawnVirus(g, k % 2 ? 'rapido' : 'kamikaze', { x: v.x + (rand(g) - 0.5) * 80, y: v.y + (rand(g) - 0.5) * 80, gen: 1, elite: k < 2 });
+    v.speed *= 1.35;
+    v.armor = Math.min(0.6, v.armor + 0.15);
   }
 }
 
@@ -941,6 +1205,64 @@ function fireUlt(g: Game, d: Defender) {
   const any = (n: number) => g.viruses.filter((v) => !v.dead && !v.hidden).sort(() => rand(g) - 0.5).slice(0, n);
   const u = d as Unit;
   switch (ult.fx) {
+    case 'expose':
+      for (const v of g.viruses) {
+        v.vuln = 6;
+        v.vulnDeep = !!d.flags.deep;
+      }
+      ring(g, d.x, d.y, 10, 400, color, 0.8, 4);
+      break;
+    case 'decoys':
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2;
+        decoy(g, d, Math.cos(a) * (WALL_R + 30), Math.sin(a) * (WALL_R + 30), { ...s, dmg: s.dmg * 1.5 }, d.flags);
+      }
+      break;
+    case 'collide': {
+      let list = near(260).filter((v) => !v.boss);
+      if (!list.length) list = nearestN(g, 0, 0, 400, 6).filter((v) => !v.boss);
+      if (!list.length) return false;
+      const cx = list.reduce((a, v) => a + v.x, 0) / list.length;
+      const cy = list.reduce((a, v) => a + v.y, 0) / list.length;
+      for (const v of list) {
+        v.x = cx + (v.x - cx) * 0.15;
+        v.y = cy + (v.y - cy) * 0.15;
+        hit(g, v, big + v.max * 0.2, common);
+      }
+      g.fx.push({ k: 'flash', x: cx, y: cy, r: 80, life: 0.35, max: 0.35, c: color });
+      g.shake = Math.max(g.shake, 9);
+      break;
+    }
+    case 'mimic': {
+      const others = g.defenders.filter((x) => x.kind !== 'clonador');
+      const o = others.length ? others[Math.floor(rand(g) * others.length)] : { ...d, kind: 'canon' as DefKind };
+      const fake = { ...o, x: d.x, y: d.y, id: d.id } as Defender;
+      fireUlt(g, fake);
+      break;
+    }
+    case 'bubbles':
+      for (const v of near(320).filter((x) => !x.boss).slice(0, 6)) {
+        v.bubble = 2.6;
+        v.bubbleDmg = s.dmg * 3 * g.g.dmgMul * passive(g.wave);
+      }
+      break;
+    case 'army':
+      for (const v of near(320).filter((x) => !x.boss).sort((a, b) => b.hp - a.hp).slice(0, 5)) hack(g, d, v, color);
+      break;
+    case 'fractalstorm':
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        g.shots.push(shot(d, u, s, { x: d.x, y: d.y, px: d.x, py: d.y, vx: Math.cos(a) * 260, vy: Math.sin(a) * 260, r: 4, life: 1.4, homing: 0, pierce: 0, frac: 0, fracT: 0.2 }));
+      }
+      break;
+    case 'blackout':
+      for (const v of g.viruses) {
+        hit(g, v, big, { ...common, quiet: true });
+        v.slowF = Math.max(v.slowF, v.boss ? 0.3 : 0.6);
+        v.slowT = 3;
+      }
+      g.fx.push({ k: 'flash', x: 0, y: 0, r: 500, life: 0.6, max: 0.6, c: '#1a0f40' });
+      break;
     case 'barrage':
     case 'boomerangs':
     case 'rainbow': {
@@ -1144,6 +1466,16 @@ function updateShots(g: Game, dt: number) {
       if (Math.abs(s.y) > g.arenaY - 6) s.vy = -Math.abs(s.vy) * Math.sign(s.y);
       if (rand(g) < dt * 3) s.hit = [];
     }
+    if (s.frac !== undefined && s.frac < 3) {
+      s.fracT = (s.fracT ?? 0.22) - dt;
+      if (s.fracT <= 0) {
+        // Splits in two, again and again.
+        const a = Math.atan2(s.vy, s.vx);
+        const sp = Math.hypot(s.vx, s.vy);
+        for (const da of [-0.4, 0.4]) g.shots.push({ ...s, vx: Math.cos(a + da) * sp, vy: Math.sin(a + da) * sp, dmg: s.dmg * 0.75, frac: s.frac + 1, fracT: 0.22, hit: [...s.hit] });
+        continue;
+      }
+    }
     if (s.prism && (s.life < 0.1 || g.viruses.some((v) => !v.dead && !v.hidden && dist2(v, s) < (v.r + s.r) ** 2))) {
       // The orb bursts into one shard of every element.
       const n = 6;
@@ -1226,6 +1558,31 @@ function updateZones(g: Game, dt: number) {
   for (const z of g.zones) {
     z.t -= dt;
     const src = g.defenders.find((d) => d.id === z.src) ?? null;
+    if (z.k === 'decoy') {
+      // Hologram of the core: lures viruses, then blows up.
+      for (const v of g.viruses) {
+        if (v.dead || v.boss || v.hacked || dist2(v, z) > 75 ** 2) continue;
+        const L = Math.sqrt(dist2(v, z)) || 1;
+        if (L > v.r + 10) {
+          v.x += ((z.x - v.x) / L) * v.speed * dt * 1.2;
+          v.y += ((z.y - v.y) / L) * v.speed * dt * 1.2;
+        } else z.dps -= v.dmg * 2 * dt;
+      }
+      if (z.dps <= 0 || z.t <= 0) {
+        splash(g, z.x, z.y, z.r, z.dmg, { slow: z.slow, burn: z.burn, crit: 0.1, critMult: 2 }, src, undefined, '#9fd3ff');
+        g.fx.push({ k: 'flash', x: z.x, y: z.y, r: 60, life: 0.3, max: 0.3, c: '#9fd3ff' });
+        continue;
+      }
+      keep.push(z);
+      continue;
+    }
+    if (z.k === 'eclipse') {
+      z.x += (z.flags.vx ?? 0) * dt;
+      z.y += (z.flags.vy ?? 0) * dt;
+      for (const v of g.viruses) if (!v.dead && !v.hacked && dist2(v, z) < (z.r + v.r) ** 2) hit(g, v, z.dps * dt, { slow: z.slow, quiet: true, src, kind: 'eclipse', crit: 0 });
+      if (z.t > 0) keep.push(z);
+      continue;
+    }
     if (z.k === 'plant') {
       // A living turret: shoots thorns at the nearest virus.
       z.flags.cd = (z.flags.cd ?? 0) - dt;
@@ -1330,6 +1687,12 @@ function updateChips(g: Game, dt: number) {
     const key = `chipT${k}`;
     const timers = g.g as unknown as Record<string, number>;
     timers[key] = (timers[key] ?? 1) - dt;
+    if (ch.id === 'anomalia') {
+      // The two main cores are joined by a beam that fries anything crossing it.
+      for (const v of g.viruses) if (!v.dead && !v.hacked && segDist2(v, { x: 0, y: 0 }, P) < (v.r + 10) ** 2) hit(g, v, 40 * pow * dt, { raw: true, quiet: true, crit: 0 });
+      g.hp = Math.min(g.maxHp, g.hp + 0.5 * dt);
+      continue;
+    }
     if (ch.id === 'vacio') {
       // Permanent vortex: pulls and grinds what passes near.
       for (const v of g.viruses) {
@@ -1370,6 +1733,17 @@ function updateChips(g: Game, dt: number) {
 
 function updateStructures(g: Game, dt: number) {
   updateChips(g, dt);
+  // «Tormenta» modifier: lightning strikes at random.
+  if (g.mod === 'tormenta' && g.phase === 'wave' && rand(g) < dt * 1.6) {
+    const list = g.viruses.filter((v) => !v.dead && !v.hacked);
+    const v = list[Math.floor(rand(g) * list.length)];
+    if (v) {
+      bolt(g, v.x + (rand(g) - 0.5) * 40, v.y - 200, v.x, v.y, '#bfe9ff', 0.3, 5);
+      hit(g, v, 20 * coreScale(g.wave), { raw: true, el: 'electrico' });
+      impact(g, v.x, v.y, '#bfe9ff', 16);
+      g.sfx.push('zap');
+    }
+  }
   const G = g.g;
   const cs = coreScale(g.wave);
   const A = (id: string) => G.asc.includes(id);
@@ -1670,6 +2044,8 @@ export function update(g: Game, dt: number) {
       }
     }
     if (v.root) v.root = Math.max(0, v.root - dt);
+    if (v.vuln) v.vuln = Math.max(0, v.vuln - dt);
+    if (special(g, v, dt)) continue;
     if (v.rewind) v.rewind = Math.max(0, v.rewind - dt);
     const dist = Math.hypot(v.x, v.y) || 1;
     behave(g, v, dist);
@@ -1721,7 +2097,7 @@ export function update(g: Game, dt: number) {
     if (v.dead) continue;
     const auraR = 70 + 10 * G.aura;
     if (G.aura > 0 && nd < auraR) hit(g, v, 8 * G.aura * cs * dt, { raw: true, quiet: true, crit: 0 });
-    if (!v.dead && nd < CORE_R + v.r) coreHit(g, v);
+    if (!v.dead && !v.hacked && !v.bubble && nd < CORE_R + v.r) coreHit(g, v);
   }
   flushBooms(g);
   g.viruses = g.viruses.filter((v) => !v.dead);

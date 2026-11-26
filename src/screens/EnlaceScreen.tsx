@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { aiStep, buildLevel, levelInfo, PER_SECTOR, SECTORS, TOTAL_LEVELS } from '../enlace/levels';
 import { nextLevel, totalStars, type EnlaceResult } from '../enlace/record';
-import { drawEnlace, fitView, toScreen, toWorld, type Drag, type EView } from '../enlace/render';
+import { drawEnlace, fitView, toScreen, toWorld, type Drag, type EView, type Skin } from '../enlace/render';
+import { COLORS, MATERIALS } from '../engine/core';
 import { canLink, cut, KIND_INFO, link, nodeR, update, type EGame, type ELink } from '../enlace/sim';
 import type { SaveData } from '../storage/persistence';
 import { IconBack } from '../components/Icons';
@@ -42,6 +43,12 @@ export function EnlaceScreen({ save, onFinish, onHome }: Props) {
   const trail = useRef<{ x: number; y: number }[]>([]);
   const pausedRef = useRef(false);
   const done = useRef(false);
+  const skinRef = useRef<Skin | undefined>(undefined);
+  {
+    const col = COLORS.find((c) => c.id === save.core.color)?.hex ?? '#c8ff2e';
+    const mat = MATERIALS.find((m) => m.id === save.core.material) ?? MATERIALS[0];
+    skinRef.current = { color: col, body: mat.body, edge: mat.edge };
+  }
   pausedRef.current = paused || !!result;
   const finishRef = useRef(onFinish);
   finishRef.current = onFinish;
@@ -125,7 +132,7 @@ export function EnlaceScreen({ save, onFinish, onHome }: Props) {
         stopMusic();
       }
       const ctx = c.getContext('2d');
-      if (ctx) drawEnlace(ctx, g, view.current, dpr.current, drag.current, trail.current);
+      if (ctx) drawEnlace(ctx, g, view.current, dpr.current, drag.current, trail.current, skinRef.current);
       hud -= dt;
       if (hud <= 0) {
         hud = 0.25;

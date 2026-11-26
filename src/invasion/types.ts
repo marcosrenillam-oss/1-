@@ -4,7 +4,11 @@ export type DefKind =
   | 'canon' | 'laser' | 'rayo' | 'pulso' | 'misil' | 'hielo' | 'cuchillas' | 'mortero'
   | 'francotirador' | 'llamas' | 'gravedad' | 'drones' | 'acido' | 'bumeran' | 'minas' | 'cronos'
   // Exclusive to the extra chips
-  | 'refractor' | 'espejo' | 'foton' | 'martillo' | 'crisol' | 'forjador' | 'nanobots' | 'espora' | 'raiz' | 'singular' | 'eco' | 'segador';
+  | 'refractor' | 'espejo' | 'foton' | 'martillo' | 'crisol' | 'forjador' | 'nanobots' | 'espora' | 'raiz' | 'singular' | 'eco' | 'segador'
+  // New main-chip defenders (Laboratorio)
+  | 'rastreador' | 'senuelo'
+  // The second main chip («Anomalía»)
+  | 'iman' | 'clonador' | 'burbuja' | 'hacker' | 'fractal' | 'eclipse';
 
 export interface Stats {
   dmg: number;
@@ -59,6 +63,8 @@ export interface Defender {
   fuse?: { kind: DefKind; stats: Stats; flags: Record<string, number>; evo: string[]; cd: number; spin: number; pending: number; lockId: number; lockT: number; aim: number };
   /** Which chip it defends: 0 is the main one in the centre. */
   chip?: number;
+  /** Stunned by a titan's pulse. */
+  stun?: number;
   /** Ultimate charge (0-1). */
   ult?: number;
   /** Overdrive time left (ultimates that boost the defender). */
@@ -73,7 +79,7 @@ export interface Defender {
 
 export type VirusType =
   | 'basico' | 'rapido' | 'tanque' | 'divisor' | 'mini' | 'zigzag' | 'escudo' | 'curandero' | 'fantasma' | 'invocador' | 'kamikaze'
-  | 'coloso' | 'reina' | 'espectro' | 'acorazado' | 'hidra';
+  | 'coloso' | 'reina' | 'espectro' | 'acorazado' | 'hidra' | 'titan';
 
 export interface Virus {
   id: number;
@@ -114,6 +120,19 @@ export interface Virus {
   root?: number;
   /** Rewound: walks backwards. */
   rewind?: number;
+  /** Vulnerable: takes extra damage from everyone. */
+  vuln?: number;
+  vulnDeep?: boolean;
+  vulnSpread?: boolean;
+  /** Trapped in a bubble: floats away, then pops. */
+  bubble?: number;
+  bubbleDmg?: number;
+  /** Hacked: fights for you for a while. */
+  hacked?: number;
+  /** Grabbed by a magnet and hurled at another virus. */
+  held?: { to: number; dmg: number };
+  /** Boss phase reached (0, 1, 2). */
+  phase?: number;
 }
 
 export interface Shot {
@@ -151,6 +170,9 @@ export interface Shot {
   saw?: boolean;
   /** Element override (prism shards). */
   el?: string;
+  /** Fractal: generation and time to the next split. */
+  frac?: number;
+  fracT?: number;
   hit: number[];
   /** Mortar shells: landing point and flight time. */
   tx?: number;
@@ -167,12 +189,12 @@ export type Fx =
   | { k: 'bolt'; pts: number[]; life: number; max: number; c: string; w?: number }
   | { k: 'flash'; x: number; y: number; r: number; life: number; max: number; c: string }
   | { k: 'beam'; x1: number; y1: number; x2: number; y2: number; c: string; w: number; life: number; max: number }
-  | { k: 'txt'; x: number; y: number; s: string; life: number; max: number; c: string }
+  | { k: 'txt'; x: number; y: number; s: string; life: number; max: number; c: string; z?: number }
   | { k: 'xp'; x: number; y: number; life: number; max: number; c: string };
 
 /** Ground effects: acid puddles, gravity wells, mines. */
 export interface Zone {
-  k: 'acid' | 'well' | 'mine' | 'plant';
+  k: 'acid' | 'well' | 'mine' | 'plant' | 'decoy' | 'eclipse';
   x: number;
   y: number;
   r: number;
@@ -220,6 +242,12 @@ export interface Globals {
   asc: string[];
   ascT: number;
   wallT: number;
+  /** Main core evolutions (0, 1, 2). */
+  coreEvo: number;
+  /** Laboratorio: elemental affinities (+damage per element). */
+  elBonus: Record<string, number>;
+  /** Laboratorio: extra chips come sooner. */
+  chipFast: number;
   nova: number;
   novaT: number;
   rerolls: number;
@@ -274,7 +302,11 @@ export interface Game {
   syn: string[];
   /** Synergies whose two defenders sit side by side on the ring (stronger). */
   synAdj: string[];
-  /** Chips in play (1-5): the main one plus extra outposts around it. */
+  /** Wave modifier of the current wave (apagón, tormenta…). */
+  mod?: string;
+  /** Slow motion time left (epic moments). */
+  slowmo: number;
+  /** Chips in play (1-6): the main one, outposts around it and a second main chip. */
   chips: number;
   /** Sound cues since the last frame (not saved). */
   sfx: string[];

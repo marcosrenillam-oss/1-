@@ -186,6 +186,8 @@ export default function App() {
         onSnapshot={invasionSnapshot}
         onFinish={invasionFinish}
         onBuyLab={invasionLab}
+        onSetStart={(i: number) => { const cur = saveRef.current; commit({ ...cur, invasion: { ...cur.invasion, lab: { ...cur.invasion.lab, start: i } } }); }}
+        core={save.core}
         onHome={() => go({ name: 'home' })}
       />
     );

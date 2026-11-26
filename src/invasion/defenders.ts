@@ -33,6 +33,15 @@ export const DEF_INFO: Record<DefKind, DefInfo> = {
   bumeran: { name: 'Bumerán', desc: 'Hojas que van y vuelven atravesándolo todo.', color: '#ffb347', base: () => stats({ dmg: 9, rate: 0.8, range: 170, speed: 300, pierce: 99 }) },
   minas: { name: 'Minador', desc: 'Siembra minas en el camino de los virus.', color: '#ff4f6d', base: () => stats({ dmg: 26, rate: 0.5, range: 200, splash: 40 }) },
   cronos: { name: 'Cronos', desc: 'Ralentiza el tiempo a su alrededor y congela con cada pulso.', color: '#7dffd8', base: () => stats({ dmg: 6, rate: 0.35, range: 115, slow: 0.35 }) },
+  rastreador: { name: 'Rastreador', desc: 'Marca a los virus como vulnerables: reciben +50 % de daño de todos.', color: '#ff7ad9', base: () => stats({ dmg: 8, rate: 1.1, range: 210, count: 2 }) },
+  senuelo: { name: 'Señuelo', desc: 'Proyecta hologramas del núcleo: los virus se paran a atacarlos y explotan.', color: '#9fd3ff', base: () => stats({ dmg: 40, rate: 0.25, range: 200, count: 1 }) },
+  // ── Second main chip «Anomalía»: mechanics found nowhere else ──
+  iman: { chip: 'anomalia', name: 'Imán', desc: 'Atrapa un virus y lo estrella contra otro: los dos se rompen.', color: '#ff5f8f', base: () => stats({ dmg: 70, rate: 0.6, range: 260 }) },
+  clonador: { chip: 'anomalia', name: 'Clonador', desc: 'Copia el ataque de otro defensor tuyo al azar, cada vez uno distinto.', color: '#f5f5f5', base: () => stats({ dmg: 1, rate: 1, range: 200 }) },
+  burbuja: { chip: 'anomalia', name: 'Burbuja', desc: 'Encierra a un virus en una burbuja que flota lejos y luego revienta.', color: '#9ff0ff', base: () => stats({ dmg: 60, rate: 0.5, range: 240, count: 1 }) },
+  hacker: { chip: 'anomalia', name: 'Hacker', desc: 'Hackea a un virus para que luche de tu lado unos segundos.', color: '#3dff6e', base: () => stats({ dmg: 30, rate: 0.3, range: 260, count: 1 }) },
+  fractal: { chip: 'anomalia', name: 'Fractal', desc: 'Disparos que se dividen en dos una y otra vez mientras vuelan.', color: '#ffd84d', base: () => stats({ dmg: 30, rate: 0.9, range: 260, speed: 260 }) },
+  eclipse: { chip: 'anomalia', name: 'Eclipse', desc: 'Una sombra que recorre el tablero drenando todo lo que cubre.', color: '#6b4dff', base: () => stats({ dmg: 60, rate: 0.12, range: 300, splash: 70 }) },
   // ── Chip Prisma (luz) ── attacks never seen on the main chip
   refractor: { chip: 'prisma', name: 'Refractor', desc: 'Lanza un orbe de luz que estalla en seis fragmentos, uno de cada elemento.', color: '#7df9ff', base: () => stats({ dmg: 34, rate: 0.7, range: 230, speed: 220, count: 6 }) },
   espejo: { chip: 'prisma', name: 'Espejo', desc: 'Paneles de espejo giratorios que devuelven a los virus su propio golpe y los repelen.', color: '#bff7ff', base: () => stats({ dmg: 30, rate: 1.4, range: 70, count: 3, knock: 40 }) },
@@ -66,6 +75,7 @@ export const ELEMENT_LIST = Object.keys(ELEMENTS) as Element[];
 export const DEF_EL: Record<DefKind, Element> = {
   canon: 'metal', laser: 'luz', rayo: 'electrico', pulso: 'vacio', misil: 'fuego', hielo: 'hielo', cuchillas: 'metal', mortero: 'fuego',
   francotirador: 'luz', llamas: 'fuego', gravedad: 'vacio', drones: 'electrico', acido: 'bio', bumeran: 'metal', minas: 'electrico', cronos: 'tiempo',
+  rastreador: 'luz', senuelo: 'electrico', iman: 'metal', clonador: 'tiempo', burbuja: 'hielo', hacker: 'electrico', fractal: 'luz', eclipse: 'vacio',
   refractor: 'luz', espejo: 'luz', foton: 'luz', martillo: 'metal', crisol: 'fuego', forjador: 'metal', nanobots: 'bio', espora: 'bio', raiz: 'bio', singular: 'vacio', eco: 'tiempo', segador: 'vacio',
 };
 /** ×1.6 super effective, ×0.6 not very effective. */
@@ -76,7 +86,7 @@ export function effectiveness(att: Element | undefined, def: Element | undefined
 }
 
 // ── Ultimate moves: one unique special per defender, charged over time ──
-export type UltFx = 'barrage' | 'beam' | 'storm' | 'quake' | 'meteors' | 'freeze' | 'whirl' | 'execute' | 'inferno' | 'hole' | 'swarm' | 'flood' | 'boomerangs' | 'minefield' | 'stop' | 'rainbow' | 'mirrors' | 'marks' | 'fissures' | 'armor' | 'saws' | 'pandemic' | 'garden' | 'jungle' | 'banish' | 'rewind' | 'harvest' | 'artillery';
+export type UltFx = 'expose' | 'decoys' | 'collide' | 'mimic' | 'bubbles' | 'army' | 'fractalstorm' | 'blackout' | 'barrage' | 'beam' | 'storm' | 'quake' | 'meteors' | 'freeze' | 'whirl' | 'execute' | 'inferno' | 'hole' | 'swarm' | 'flood' | 'boomerangs' | 'minefield' | 'stop' | 'rainbow' | 'mirrors' | 'marks' | 'fissures' | 'armor' | 'saws' | 'pandemic' | 'garden' | 'jungle' | 'banish' | 'rewind' | 'harvest' | 'artillery';
 export const ULTS: Record<DefKind, { name: string; desc: string; fx: UltFx }> = {
   canon: { name: 'Andanada', desc: '24 balas en todas direcciones.', fx: 'barrage' },
   laser: { name: 'Rayo solar', desc: 'Un haz gigante que barre la pantalla.', fx: 'beam' },
@@ -106,6 +116,14 @@ export const ULTS: Record<DefKind, { name: string; desc: string; fx: UltFx }> = 
   singular: { name: 'Destierro', desc: 'Manda a los cinco más duros al borde.', fx: 'banish' },
   eco: { name: 'Rebobinado', desc: 'Todo lo cercano camina hacia atrás 3 s.', fx: 'rewind' },
   segador: { name: 'Cosecha', desc: 'Siega a todos los virus por debajo del 25 %.', fx: 'harvest' },
+  rastreador: { name: 'Exposición', desc: 'Todos los virus en pantalla quedan vulnerables.', fx: 'expose' },
+  senuelo: { name: 'Espejismo', desc: 'Cinco hologramas a la vez.', fx: 'decoys' },
+  iman: { name: 'Colisión', desc: 'Junta a todos los virus cercanos de golpe.', fx: 'collide' },
+  clonador: { name: 'Mímesis', desc: 'Lanza el definitivo de otro defensor.', fx: 'mimic' },
+  burbuja: { name: 'Espuma', desc: 'Encierra a seis virus a la vez.', fx: 'bubbles' },
+  hacker: { name: 'Ejército', desc: 'Hackea a cinco virus.', fx: 'army' },
+  fractal: { name: 'Fractal infinito', desc: 'Una lluvia de disparos que no para de dividirse.', fx: 'fractalstorm' },
+  eclipse: { name: 'Eclipse total', desc: 'Oscurece todo el tablero y lo drena.', fx: 'blackout' },
 };
 export const ULT_TIME = 16;
 
@@ -113,22 +131,26 @@ export const ULT_TIME = 16;
 export const behOf = (k: DefKind): DefKind => DEF_INFO[k].beh ?? k;
 
 // ── Extra chips: outposts around the main one ──────────────────────────────
-export type ChipId = 'prisma' | 'forja' | 'bio' | 'vacio';
+export type ChipId = 'prisma' | 'forja' | 'bio' | 'vacio' | 'anomalia';
 export const CHIPS: { id: ChipId; name: string; color: string; ability: string; kinds: DefKind[] }[] = [
   { id: 'prisma', name: 'Prisma', color: '#7df9ff', ability: 'Dispara haces de luz que se reparten entre los virus más cercanos.', kinds: ['refractor', 'espejo', 'foton'] },
   { id: 'forja', name: 'Forja', color: '#ff9a3d', ability: 'Hace caer meteoritos ardientes sobre los virus.', kinds: ['martillo', 'crisol', 'forjador'] },
   { id: 'bio', name: 'Bio', color: '#5dffa8', ability: 'Repara el núcleo y siembra nubes tóxicas.', kinds: ['nanobots', 'espora', 'raiz'] },
   { id: 'vacio', name: 'Vacío', color: '#9d7bff', ability: 'Un vórtice permanente atrae y tritura a los virus que pasan.', kinds: ['singular', 'eco', 'segador'] },
+  { id: 'anomalia', name: 'Anomalía', color: '#ff5f8f', ability: 'Un segundo núcleo principal: un rayo une los dos núcleos y fulmina lo que lo cruza.', kinds: ['iman', 'clonador', 'burbuja', 'hacker', 'fractal', 'eclipse'] },
 ];
+/** Index of the second main chip. */
+export const TWIN = 5;
 export const MAX_CHIPS = 1 + CHIPS.length;
 /** Chip upgrade levels (all three defenders at once). */
 export const CHIP_MAX_LVL = 10;
 /** Defenders per extra chip. */
 export const CHIP_SLOTS = 3;
+export const chipSlots = (k: number) => (k === TWIN ? 6 : CHIP_SLOTS);
 export const CHIP_D = 235;
 /** Where chip k (1-4) sits: above, below, left, right of the main one. */
 export function chipPos(k: number): { x: number; y: number } {
-  return [{ x: 0, y: 0 }, { x: 0, y: -CHIP_D }, { x: 0, y: CHIP_D }, { x: -CHIP_D, y: 0 }, { x: CHIP_D, y: 0 }][k] ?? { x: 0, y: 0 };
+  return [{ x: 0, y: 0 }, { x: 0, y: -CHIP_D }, { x: 0, y: CHIP_D }, { x: -CHIP_D, y: 0 }, { x: CHIP_D, y: 0 }, { x: CHIP_D * 0.78, y: -CHIP_D * 0.78 }][k] ?? { x: 0, y: 0 };
 }
 export const chipOfKind = (k: DefKind): number => {
   const c = DEF_INFO[k].chip;
@@ -266,6 +288,20 @@ export const EVOS: Evo[] = [
   E('cronos', 2, 'dilatacion', 'eco', 'Eco', 'Los defensores vecinos +30 % de cadencia', (_s, f) => { f.haste = 1; }),
   E('cronos', 2, 'paradoja', 'rebobinar', 'Rebobinar', 'Cada pulso hace retroceder a los virus', (s) => { s.knock += 60; }),
   E('cronos', 2, 'paradoja', 'reloj', 'Reloj roto', 'Daño del pulso ×4', (s) => { s.dmg *= 4; }),
+  // Rastreador
+  E('rastreador', 1, undefined, 'radar', 'Radar', 'Marca a 2 virus más a la vez', (s) => { s.count += 2; }),
+  E('rastreador', 1, undefined, 'debilitar', 'Debilitar', 'La marca dura el doble', (_s, f) => { f.long = 1; }),
+  E('rastreador', 2, 'radar', 'red-rastreo', 'Red de rastreo', '+3 marcas y más alcance', (s) => { s.count += 3; s.range *= 1.3; }),
+  E('rastreador', 2, 'radar', 'contagio-marca', 'Marca contagiosa', 'Al morir, la marca salta a otro virus', (_s, f) => { f.spread = 1; }),
+  E('rastreador', 2, 'debilitar', 'quebrar', 'Quebrar', 'Los marcados reciben +100 % en vez de +50 %', (_s, f) => { f.deep = 1; }),
+  E('rastreador', 2, 'debilitar', 'congelar-marca', 'Marca helada', 'Los marcados también van un 40 % más lentos', (s) => { s.slow = Math.max(s.slow, 0.4); }),
+  // Señuelo
+  E('senuelo', 1, undefined, 'proyector', 'Proyector', '+1 holograma', (s) => { s.count += 1; }),
+  E('senuelo', 1, undefined, 'trampa', 'Holograma trampa', 'La explosión hace el doble', (s) => { s.dmg *= 2; }),
+  E('senuelo', 2, 'proyector', 'multitud', 'Multitud', '+2 hologramas', (s) => { s.count += 2; }),
+  E('senuelo', 2, 'proyector', 'resistente', 'Resistentes', 'Los hologramas aguantan el triple', (_s, f) => { f.tough = 1; }),
+  E('senuelo', 2, 'trampa', 'nuclear-h', 'Holograma nuclear', 'Explosión enorme y quemadura', (s) => { s.dmg *= 1.5; s.burn += 12; }),
+  E('senuelo', 2, 'trampa', 'hielo-h', 'Holograma helado', 'Al explotar congela', (s) => { s.slow = 0.85; }),
 ];
 
 // ── Synergies: pairs that power each other up when both are on the ring ──
@@ -304,11 +340,11 @@ export const SYNERGIES: Synergy[] = [
 // ── Fusions: two fully evolved defenders become one legendary ──────────────
 const NOUN: Partial<Record<DefKind, string>> = {
   canon: 'Cañón', laser: 'Láser', rayo: 'Rayo', pulso: 'Pulso', misil: 'Misil', hielo: 'Glaciar', cuchillas: 'Torbellino', mortero: 'Obús',
-  francotirador: 'Rifle', llamas: 'Infierno', gravedad: 'Vórtice', drones: 'Enjambre', acido: 'Pantano', bumeran: 'Bumerán', minas: 'Campo minado', cronos: 'Reloj',
+  francotirador: 'Rifle', llamas: 'Infierno', gravedad: 'Vórtice', drones: 'Enjambre', acido: 'Pantano', bumeran: 'Bumerán', minas: 'Campo minado', cronos: 'Reloj', rastreador: 'Ojo', senuelo: 'Espejismo',
 };
 const ADJ: Partial<Record<DefKind, string>> = {
   canon: 'balístico', laser: 'fotónico', rayo: 'eléctrico', pulso: 'sísmico', misil: 'explosivo', hielo: 'helado', cuchillas: 'afilado', mortero: 'orbital',
-  francotirador: 'certero', llamas: 'ígneo', gravedad: 'gravitatorio', drones: 'autónomo', acido: 'corrosivo', bumeran: 'giratorio', minas: 'traicionero', cronos: 'temporal',
+  francotirador: 'certero', llamas: 'ígneo', gravedad: 'gravitatorio', drones: 'autónomo', acido: 'corrosivo', bumeran: 'giratorio', minas: 'traicionero', cronos: 'temporal', rastreador: 'vigilante', senuelo: 'ilusorio',
 };
 const SPECIAL: Record<string, string> = {
   'canon+rayo': 'Railgun', 'laser+rayo': 'Cañón de plasma', 'hielo+llamas': 'Tormenta de vapor', 'misil+mortero': 'Lluvia de meteoritos',

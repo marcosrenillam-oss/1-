@@ -9,6 +9,11 @@ import type { DefKind, Game } from '../invasion/types';
 import type { InvasionRecord } from '../storage/persistence';
 import { IconBack } from '../components/Icons';
 import { haptic } from '../haptics';
+import type { CoreState } from '../engine/core';
+import { chipImage } from '../invasion/coreImage';
+import { mainRing, refreshSynergies } from '../invasion/cards';
+import { DEF_KINDS } from '../invasion/defenders';
+import { MODS, titanName } from '../invasion/sim';
 import { onSoundPrefs, setMusicIntensity, setSoundPrefs, sfx, soundPrefs, startMusic, stopMusic, unlockAudio } from '../audio';
 import { CHIPS } from '../invasion/defenders';
 import { motionMs } from '../motion';
@@ -19,6 +24,9 @@ interface Props {
   onSnapshot: (s: InvasionSnapshot) => void;
   onFinish: (g: Game) => InvasionResult;
   onBuyLab: (id: string) => boolean;
+  onSetStart: (index: number) => void;
+  /** The chip built in «Tu Núcleo»: it becomes the core here. */
+  core: CoreState;
   onHome: () => void;
 }
 
@@ -40,9 +48,9 @@ const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60
 /** World units across the short side of the screen. */
 const WORLD = 360;
 /** The view zooms out as chips are added, so all of them fit. */
-const ZOOM = [1, 1.55, 1.6, 1.8, 1.9];
+const ZOOM = [1, 1.55, 1.6, 1.8, 1.9, 2.05];
 
-export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, onHome }: Props) {
+export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, onSetStart, core, onHome }: Props) {
   const [phase, setPhase] = useState<Phase>('intro');
   const phaseRef = useRef<Phase>('intro');
   phaseRef.current = phase;
@@ -59,6 +67,22 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
   const bg = useRef<HTMLCanvasElement | null>(null);
   const pausedRef = useRef(false);
   const zoomRef = useRef(1);
+  const userZoom = useRef(1);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch0 = useRef<{ d: number; z: number } | null>(null);
+  const coreImg = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    let alive = true;
+    chipImage(core)
+      .then((img) => {
+        if (alive) coreImg.current = img;
+      })
+      // Without the image the core is drawn as before.
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [core]);
   const dprRef = useRef(1);
   const [prefs, setPrefs] = useState(soundPrefs);
   useEffect(() => onSoundPrefs(() => setPrefs({ ...soundPrefs() })), []);
@@ -163,15 +187,18 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     let musicT = 0;
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const real = Math.min(0.05, (now - last) / 1000);
       last = now;
       const g = game.current;
       const c = canvas.current;
       if (!g || !c) return;
+      // Slow motion for epic moments.
+      if (g.slowmo > 0) g.slowmo = Math.max(0, g.slowmo - real);
+      const dt = real * (g.slowmo > 0 ? 0.35 : 1);
       const running = !pausedRef.current && !cardsRef.current;
       if (running) update(g, dt);
       // Zoom out smoothly when a chip is added.
-      const want = ZOOM[Math.min(ZOOM.length, g.chips) - 1];
+      const want = ZOOM[Math.min(ZOOM.length, g.chips) - 1] / userZoom.current;
       if (Math.abs(want - zoomRef.current) > 0.002) {
         zoomRef.current += (want - zoomRef.current) * Math.min(1, dt * 2.5);
         const v = view.current;
@@ -194,7 +221,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           snapRef.current(snapshot(g));
           if (e === 'boss') {
             const bossType = g.spawns.find((s) => BOSS_NAMES[s.type])?.type;
-            showBanner(`Oleada ${g.wave}`, bossType ? `¡Jefe: ${BOSS_NAMES[bossType]}!` : '¡Jefe!', true);
+            showBanner(`Oleada ${g.wave}`, g.wave % 25 === 0 ? `¡Titán: ${titanName(g.wave)}!` : bossType ? `¡Jefe: ${BOSS_NAMES[bossType]}!` : '¡Jefe!', true);
             haptic('heavy');
           } else showBanner(`Oleada ${g.wave}`);
           sfx(e);
@@ -218,6 +245,25 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           sfx('fusion');
           showBanner('¡Fusión legendaria!', defenderName(g.defenders.find((d) => d.fuse && !seenFusions.current.has(d.id)) ?? g.defenders[0]));
           g.defenders.forEach((d) => d.fuse && seenFusions.current.add(d.id));
+        } else if (e.startsWith('mod:')) {
+          const m = MODS[e.slice(4)];
+          if (m) showBanner(m.name, m.desc, true);
+          sfx('boss');
+        } else if (e.startsWith('phase:')) {
+          showBanner(`¡Fase ${e.slice(6)}!`, 'El jefe cambia de táctica', true);
+          haptic('heavy');
+          sfx('boss');
+        } else if (e === 'emp') {
+          haptic('error');
+          sfx('hurt');
+        } else if (e === 'titankill') {
+          showBanner('¡Titán derrotado!', '+3 mejoras', true);
+          haptic('heavy');
+          sfx('bossdie');
+        } else if (e === 'coreevo') {
+          showBanner('¡El núcleo evoluciona!', undefined, true);
+          haptic('heavy');
+          sfx('chip');
         } else if (e === 'wallbreak') {
           haptic('error');
           sfx('wallbreak');
@@ -245,7 +291,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         }, motionMs(1300, 300));
       }
       const ctx = c.getContext('2d');
-      if (ctx && bg.current) draw(ctx, g, view.current, bg.current, c.width / view.current.w);
+      if (ctx && bg.current) draw(ctx, g, { ...view.current, coreImg: coreImg.current }, bg.current, c.width / view.current.w);
       hudT -= dt;
       if (hudT <= 0) {
         hudT = 0.1;
@@ -300,6 +346,20 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     cardsRef.current = o;
     setCards(o);
   };
+  /** Formation: swap a main-ring defender with its neighbour. */
+  const moveDef = (id: number, dir: number) => {
+    const g = game.current;
+    if (!g) return;
+    const n = mainRing(g).length;
+    const i = g.defenders.findIndex((d) => d.id === id);
+    if (i < 0 || i >= n) return;
+    const j = (i + dir + n) % n;
+    [g.defenders[i], g.defenders[j]] = [g.defenders[j], g.defenders[i]];
+    refreshSynergies(g);
+    g.events = g.events.filter((e) => !e.startsWith('syn:'));
+    haptic('tap');
+    setHud((h) => (h ? { ...h } : h));
+  };
   const endNow = () => {
     const g = game.current;
     if (!g) return;
@@ -312,7 +372,35 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
 
   return (
     <div className="inv" ref={wrap}>
-      <canvas ref={canvas} className="inv-canvas" aria-label="Tablero de la invasión" />
+      <canvas
+        ref={canvas}
+        className="inv-canvas"
+        aria-label="Tablero de la invasión"
+        onPointerDown={(e) => {
+          pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pointers.current.size === 2) {
+            const [a, b] = [...pointers.current.values()];
+            pinch0.current = { d: Math.hypot(a.x - b.x, a.y - b.y), z: userZoom.current };
+          }
+        }}
+        onPointerMove={(e) => {
+          if (!pointers.current.has(e.pointerId)) return;
+          pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (pointers.current.size === 2 && pinch0.current) {
+            const [a, b] = [...pointers.current.values()];
+            const d = Math.hypot(a.x - b.x, a.y - b.y);
+            userZoom.current = Math.max(0.6, Math.min(1.8, (pinch0.current.z * d) / Math.max(20, pinch0.current.d)));
+          }
+        }}
+        onPointerUp={(e) => {
+          pointers.current.delete(e.pointerId);
+          if (pointers.current.size < 2) pinch0.current = null;
+        }}
+        onPointerCancel={(e) => {
+          pointers.current.delete(e.pointerId);
+          pinch0.current = null;
+        }}
+      />
 
       {phase === 'intro' && (
         <div className="inv-intro">
@@ -381,9 +469,25 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           </header>
           <div className="inv-lab-scroll">
             <p className="inv-lab-hint">Ganas datos ◆ en cada invasión: más cuanto más lejos llegues y más jefes derrotes.</p>
-            {(['unlock', 'boost'] as const).map((grp) => (
+            {labLevel(record.lab, 'elegir') > 0 && (
+              <section>
+                <p className="eyebrow inv-lab-group">Tu defensor inicial</p>
+                <div className="inv-start-list">
+                  {DEF_KINDS.filter((k) => ['canon', 'laser', 'rayo', 'pulso', 'misil', 'hielo', 'cuchillas', 'mortero'].includes(k) || labLevel(record.lab, `u-${k}`) > 0).map((k) => {
+                    const idx = DEF_KINDS.indexOf(k) + 1;
+                    const on = (record.lab.start ?? 1) === idx;
+                    return (
+                      <button key={k} type="button" className={`inv-start${on ? ' is-on' : ''}`} style={{ ['--c' as string]: DEF_INFO[k].color }} onClick={() => { onSetStart(idx); haptic('tap'); }}>
+                        {DEF_INFO[k].name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+            {(['unlock', 'boost', 'element'] as const).map((grp) => (
               <section key={grp}>
-                <p className="eyebrow inv-lab-group">{grp === 'unlock' ? 'Nuevos defensores' : 'Mejoras para cada partida'}</p>
+                <p className="eyebrow inv-lab-group">{grp === 'unlock' ? 'Nuevos defensores' : grp === 'boost' ? 'Mejoras para cada partida' : 'Afinidades de elemento'}</p>
                 <div className="inv-lab-grid">
                   {LAB.filter((it) => it.group === grp).map((it) => {
                     const lvl = labLevel(record.lab, it.id);
@@ -448,6 +552,18 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
               </div>
             </div>
           </div>
+          {g.viruses.some((v) => v.type === 'titan') && (() => {
+            const ti = g.viruses.find((v) => v.type === 'titan')!;
+            return (
+              <div className="inv-titan" aria-label="Vida del titán">
+                <span className="display">{titanName(Math.max(25, g.wave))}</span>
+                <div className="inv-titan-bar">
+                  <span style={{ transform: `scaleX(${Math.max(0, ti.hp / ti.max)})` }} />
+                </div>
+                <small className="tnum">Fase {(ti.phase ?? 0) + 1}/3</small>
+              </div>
+            );
+          })()}
           {banner && (
             <div className={`inv-banner${banner.boss ? ' inv-banner--boss' : ''}`} key={banner.key} onAnimationEnd={() => setBanner(null)}>
               <span className="display">{banner.text}</span>
@@ -524,6 +640,12 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
                 <li key={d.id} style={{ ['--c' as string]: DEF_INFO[d.kind].color, ['--c2' as string]: d.fuse ? DEF_INFO[d.fuse.kind].color : DEF_INFO[d.kind].color }} className={d.fuse ? 'is-fused' : ''}>
                   <span className="inv-build-dot" />
                   <span className="inv-build-name">{defenderName(d)}</span>
+                  {!d.chip && mainRing(g).length > 2 && (
+                    <span className="inv-move">
+                      <button type="button" aria-label={`Mover ${defenderName(d)} a la izquierda`} onClick={() => moveDef(d.id, -1)}>‹</button>
+                      <button type="button" aria-label={`Mover ${defenderName(d)} a la derecha`} onClick={() => moveDef(d.id, 1)}>›</button>
+                    </span>
+                  )}
                   <span className="inv-build-meta tnum">
                     <i style={{ color: ELEMENTS[DEF_EL[d.kind]].color }}>{ELEMENTS[DEF_EL[d.kind]].name}</i> · {ULTS[d.kind].name} · nv {d.lvl} · {fmt(d.kills)}
                   </span>

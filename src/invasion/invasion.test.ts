@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOGUE_SIZE, chipReady, choose, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
+import { CATALOGUE_SIZE, chipReady, choose, refreshSynergies, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
 import { buyLab } from './record';
 import { LAB, NEW_KINDS, startOpts } from './lab';
 import { ALL_KINDS, BASE_KINDS, chipPos, CHIPS, DEF_KINDS, effectiveness, EVOS, evoOptions, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
 import { finishInvasion } from './record';
-import { energyFor, newGame, rand, restore, snapshot, structs, update, WALL_R } from './sim';
+import { energyFor, hit, MODS, newGame, rand, restore, snapshot, structs, update, WALL_R } from './sim';
 import type { Game } from './types';
 import { emptySave, normalize } from '../storage/persistence';
 
@@ -16,8 +16,8 @@ function play(g: Game, seconds: number, pick = (o: ReturnType<typeof offer>) => 
 }
 
 describe('Invasión', () => {
-  it('has well over 100 different upgrades and 16 defender types', () => {
-    expect(DEF_KINDS).toHaveLength(16);
+  it('has well over 100 different upgrades and 18 main defender types', () => {
+    expect(DEF_KINDS).toHaveLength(18);
     expect(CATALOGUE_SIZE).toBeGreaterThanOrEqual(250);
     const ids = [...STAT_CARDS.map((c) => c.id), ...GLOBAL_CARDS.map((c) => c.id), ...PACT_CARDS.map((c) => c.id), ...EVOS.map((e) => e.id)];
     expect(new Set(ids).size).toBe(ids.length);
@@ -155,6 +155,14 @@ describe('Invasión', () => {
     save.invasion.datos = 0;
     expect(buyLab(save, 'dano')).toBeNull();
     expect(LAB.length).toBeGreaterThanOrEqual(15);
+    let rich = emptySave();
+    rich.invasion.datos = 1e5;
+    rich = buyLab(rich, 'elegir')!;
+    rich = buyLab(rich, 'af-fuego')!;
+    rich.invasion.lab.start = DEF_KINDS.indexOf('laser') + 1;
+    const h = newGame(17, 300, 300, startOpts(rich.invasion.lab));
+    expect(h.defenders[0].kind).toBe('laser');
+    expect(h.g.elBonus.fuego).toBeCloseTo(0.06);
   });
 
   it('every pick of a structure changes it, up to its top level; then it can ascend', () => {
@@ -233,7 +241,7 @@ describe('Invasión', () => {
     const back = restore(JSON.parse(JSON.stringify(snapshot(g))), 300);
     expect(back.chips).toBe(2);
     expect(back.defenders.filter((d) => d.chip === 1)).toHaveLength(g.defenders.filter((d) => d.chip === 1).length);
-    expect(MAX_CHIPS).toBe(5);
+    expect(MAX_CHIPS).toBe(6);
   });
 
   it('every exclusive chip defender has its own new attack and works', () => {
@@ -259,7 +267,7 @@ describe('Invasión', () => {
     for (const kind of ALL_KINDS) {
       const g = newGame(42, 300, 400);
       g.defenders = [];
-      g.chips = 5;
+      g.chips = 6;
       const d = addDefender(g, kind);
       d.ult = 0.999;
       let fired = false;
@@ -293,6 +301,82 @@ describe('Invasión', () => {
       expect(JSON.stringify(d.stats)).not.toBe(before[i]);
       expect(d.lvl).toBe(1);
     });
+  });
+
+  it('random wave modifiers show up; bosses change phase; titans come every 25 waves and stun', () => {
+    const g = newGame(51, 300, 400);
+    const seen = new Set<string>();
+    for (let w = 0; w < 60; w++) {
+      g.phase = 'break';
+      g.breakT = 0;
+      g.viruses = [];
+      update(g, 1 / 30);
+      if (g.mod) seen.add(g.mod);
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(4);
+    for (const m of seen) expect(MODS[m]).toBeTruthy();
+    // Boss phases
+    const h = newGame(52, 300, 400);
+    h.wave = 4;
+    h.phase = 'break';
+    h.breakT = 0;
+    update(h, 1 / 30);
+    for (let t = 0; t < 20 && !h.viruses.some((v) => v.boss); t += 1 / 30) update(h, 1 / 30);
+    const boss = h.viruses.find((v) => v.boss)!;
+    expect(boss).toBeTruthy();
+    hit(h, boss, boss.max * 0.5, { raw: true });
+    expect(boss.phase).toBe(1);
+    expect(h.events.some((e) => e === 'phase:2')).toBe(true);
+    // Titan at wave 25
+    const k = newGame(53, 300, 400);
+    k.wave = 24;
+    k.phase = 'break';
+    k.breakT = 0;
+    let titan;
+    for (let t = 0; t < 40 && !titan; t += 1 / 30) {
+      update(k, 1 / 30);
+      titan = k.viruses.find((v) => v.type === 'titan');
+    }
+    expect(titan).toBeTruthy();
+    titan!.x = 230;
+    titan!.y = 0;
+    let stunned = false;
+    for (let t = 0; t < 8 && !stunned; t += 1 / 30) {
+      update(k, 1 / 30);
+      stunned = k.defenders.some((d) => (d.stun ?? 0) > 0);
+    }
+    expect(stunned).toBe(true);
+  });
+
+  it('with the four outposts maxed the core evolves, then a second main core appears', () => {
+    const g = newGame(54, 300, 400, { unlocked: [...DEF_KINDS] });
+    g.chips = 5;
+    for (const ch of CHIPS.slice(0, 4)) for (let k = 0; k < 10; k++) g.taken.push(`chipup-${ch.id}`);
+    g.level = 80;
+    let evo;
+    for (let k = 0; k < 30 && !evo; k++) evo = offer(g, () => rand(g)).find((c) => c.kind === 'coreevo');
+    expect(evo?.title).toBe('Evolución del núcleo');
+    choose(g, evo!);
+    expect(g.g.coreEvo).toBe(1);
+    let twin;
+    for (let k = 0; k < 60 && !twin; k++) twin = offer(g, () => rand(g)).find((c) => c.kind === 'chip');
+    expect(twin?.title).toContain('Anomalía');
+    choose(g, twin!);
+    expect(g.chips).toBe(6);
+    expect(g.defenders.some((d) => d.chip === 5)).toBe(true);
+  });
+
+  it('formation: moving a defender changes who its neighbours are', () => {
+    const g = newGame(55);
+    g.defenders = [];
+    for (const k of ['hielo', 'canon', 'laser', 'rayo', 'misil', 'pulso'] as const) addDefender(g, k);
+    expect(g.syn).toContain('superconductor');
+    expect(g.synAdj).not.toContain('superconductor');
+    [g.defenders[2], g.defenders[3]] = [g.defenders[3], g.defenders[2]];
+    [g.defenders[1], g.defenders[2]] = [g.defenders[2], g.defenders[1]];
+    expect(g.defenders.map((d) => d.kind)).toEqual(['hielo', 'rayo', 'canon', 'laser', 'misil', 'pulso']);
+    refreshSynergies(g);
+    expect(g.synAdj).toContain('superconductor');
   });
 
   it('a saved wave restores the same build', () => {

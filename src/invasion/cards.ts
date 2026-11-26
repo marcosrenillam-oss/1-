@@ -1,9 +1,9 @@
-import { behOf, CHIP_MAX_LVL, CHIP_SLOTS, CHIPS, chipOfKind, DEF_EL, DEF_INFO, DEF_KINDS, defenderName, ELEMENTS, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
+import { behOf, CHIP_MAX_LVL, CHIP_SLOTS, chipSlots, CHIPS, TWIN, chipOfKind, DEF_EL, DEF_INFO, DEF_KINDS, defenderName, ELEMENTS, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
 import type { DefKind, Defender, Game, Stats } from './types';
 
 export const MAX_DEFENDERS = 10;
 
-export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip' | 'chipup';
+export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip' | 'chipup' | 'coreevo';
 export type Rarity = 'comun' | 'rara' | 'epica' | 'legendaria';
 export const RARITY_LABEL: Record<Rarity, string> = { comun: 'Común', rara: 'Rara', epica: 'Épica', legendaria: 'Legendaria' };
 export interface Card {
@@ -181,7 +181,7 @@ export const PACT_CARDS: GlobalDef[] = [
 
 /** Distinct upgrades in the game (fusions counted once per pair of types). */
 export const FUSION_PAIRS = (DEF_KINDS.length * (DEF_KINDS.length - 1)) / 2;
-export const CATALOGUE_SIZE = CHIPS.length * (1 + CHIP_SLOTS) + DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
+export const CATALOGUE_SIZE = CHIPS.reduce((a, c) => a + 1 + c.kinds.length, 0) + 2 + 0 * CHIP_SLOTS + DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
 
 export const kindsOf = (d: Defender): DefKind[] => (d.fuse ? [d.kind, d.fuse.kind] : [d.kind]);
 const owned = (g: Game) => new Set(g.defenders.flatMap(kindsOf));
@@ -251,7 +251,7 @@ function newDefenderCard(g: Game, kind: DefKind): Card {
   return {
     key: `new-${kind}`, id: `new-${kind}`, kind: 'new', rarity: 'rara', title: info.name,
     desc: `${info.desc} Definitivo: ${ULTS[kind].name}.` + (syn.length ? ` Sinergia: ${syn.map((x) => x.name).join(', ')}.` : ''),
-    tag: `${ELEMENTS[DEF_EL[kind]].name} · ` + (info.chip ? `Chip ${CHIPS[chipOfKind(kind) - 1].name} · defensor ${g.defenders.filter((x) => x.chip === chipOfKind(kind)).length + 1}/${CHIP_SLOTS}` : `Nuevo defensor · ${mainRing(g).length + 1}/${MAX_DEFENDERS}`), color: info.color,
+    tag: `${ELEMENTS[DEF_EL[kind]].name} · ` + (info.chip ? `Chip ${CHIPS[chipOfKind(kind) - 1].name} · defensor ${g.defenders.filter((x) => x.chip === chipOfKind(kind)).length + 1}/${chipSlots(chipOfKind(kind))}` : `Nuevo defensor · ${mainRing(g).length + 1}/${MAX_DEFENDERS}`), color: info.color,
     apply: (gg, at) => { addDefender(gg, kind, at); gg.g.horde *= 1.06; threaten(gg); },
   };
 }
@@ -287,16 +287,18 @@ export function chipReady(g: Game): boolean {
     const ring = mainRing(g);
     const kinds = new Set(ring.flatMap(kindsOf)).size;
     const evolutions = ring.reduce((a, d) => a + (d.fuse ? 4 : d.evo.length), 0);
-    return kinds >= Math.min(7, g.unlocked.length) && evolutions >= 6 && g.level >= 30;
+    return kinds >= Math.min(7, g.unlocked.length) && evolutions >= Math.max(3, 6 - g.g.chipFast) && g.level >= 30 - g.g.chipFast * 4;
   }
+  // The second main chip: only after the central core has evolved.
+  if (g.chips === TWIN) return g.g.coreEvo >= 1 && g.level >= 70 - g.g.chipFast * 4;
   const crew = g.defenders.filter((d) => d.chip === g.chips - 1);
-  return crew.length >= 2 && g.level >= 30 + 14 * (g.chips - 1);
+  return crew.length >= 2 && g.level >= 30 + 14 * (g.chips - 1) - g.g.chipFast * 4;
 }
 function chipCard(g: Game): Card {
   const ch = CHIPS[g.chips - 1];
-  const nth = ['Segundo', 'Tercer', 'Cuarto', 'Quinto'][g.chips - 1];
+  const nth = ['Segundo', 'Tercer', 'Cuarto', 'Quinto', 'Sexto'][g.chips - 1];
   return {
-    key: `chip-${ch.id}`, id: `chip-${ch.id}`, kind: 'chip', rarity: 'legendaria', title: `${nth} chip: ${ch.name}`,
+    key: `chip-${ch.id}`, id: `chip-${ch.id}`, kind: 'chip', rarity: 'legendaria', title: g.chips === TWIN ? `Segundo núcleo: ${ch.name}` : `${nth} chip: ${ch.name}`,
     desc: `${ch.ability} Trae sus propios defensores, distintos a todos los demás.`, tag: `Nuevo chip · ${g.chips + 1}/${MAX_CHIPS}`, color: ch.color,
     apply: (gg) => {
       gg.chips += 1;
@@ -306,12 +308,34 @@ function chipCard(g: Game): Card {
     },
   };
 }
+/** The central core evolves: first when the four outposts are maxed, then when the second core is maxed too. */
+function coreEvoCard(g: Game): Card | null {
+  const maxed = (k: number) => levelOf(g, `chipup-${CHIPS[k - 1].id}`) >= CHIP_MAX_LVL;
+  if (g.g.coreEvo === 0 && g.chips >= 5 && [1, 2, 3, 4].every(maxed)) {
+    return {
+      key: 'coreevo-1', id: 'coreevo-1', kind: 'coreevo', rarity: 'legendaria', title: 'Evolución del núcleo',
+      desc: 'El núcleo central evoluciona: +50 de integridad, se repara solo y todos tus defensores hacen +25 % de daño. Abre la puerta a un segundo núcleo.',
+      tag: 'Núcleo · evolución 1/2', color: '#ffd60a',
+      apply: (gg) => { gg.g.coreEvo = 1; gg.maxHp += 50; gg.hp += 50; gg.g.regen += 1; gg.g.dmgMul *= 1.25; gg.events.push('coreevo'); gg.slowmo = 1.2; },
+    };
+  }
+  if (g.g.coreEvo === 1 && g.chips > TWIN && maxed(TWIN)) {
+    return {
+      key: 'coreevo-2', id: 'coreevo-2', kind: 'coreevo', rarity: 'legendaria', title: 'Núcleo binario',
+      desc: 'Los dos núcleos se sincronizan: +100 de integridad, +40 % de daño y cadencia para todos y un escudo extra.',
+      tag: 'Núcleo · evolución 2/2', color: '#ffd60a',
+      apply: (gg) => { gg.g.coreEvo = 2; gg.maxHp += 100; gg.hp += 100; gg.g.dmgMul *= 1.4; gg.g.rateMul *= 1.4; gg.g.shieldMax += 1; gg.g.shield += 1; gg.events.push('coreevo'); gg.slowmo = 1.2; },
+    };
+  }
+  return null;
+}
+
 /** Exclusive defenders still missing on the extra chips. */
 function chipKindsAvailable(g: Game): DefKind[] {
   const out: DefKind[] = [];
   for (let k = 1; k < g.chips; k++) {
     const crew = g.defenders.filter((d) => d.chip === k);
-    if (crew.length >= CHIP_SLOTS) continue;
+    if (crew.length >= chipSlots(k)) continue;
     out.push(...CHIPS[k - 1].kinds.filter((x) => !crew.some((d) => d.kind === x)));
   }
   return out;
@@ -351,7 +375,7 @@ function cardFor(g: Game, rnd: () => number): Card | null {
   const n = mainRing(g).length;
   const r = rnd();
   for (let k = 1; k < g.chips; k++) {
-    const full = g.defenders.filter((d) => d.chip === k).length >= CHIP_SLOTS;
+    const full = g.defenders.filter((d) => d.chip === k).length >= chipSlots(k);
     if (full && levelOf(g, `chipup-${CHIPS[k - 1].id}`) < CHIP_MAX_LVL && rnd() < 0.18) return chipUpgradeCard(g, k, rnd);
   }
   const extra = chipKindsAvailable(g);
@@ -439,7 +463,9 @@ export function offer(g: Game, rnd: () => number): Card[] {
   }
   const out: Card[] = [];
   const want = g.g.choices;
-  if (chipReady(g) && rnd() < 0.6) out.push(chipCard(g));
+  const evo = coreEvoCard(g);
+  if (evo) out.push(evo);
+  else if (chipReady(g) && rnd() < 0.6) out.push(chipCard(g));
   const pairs = fusablePairs(g);
   if (pairs.length && rnd() < 0.55) {
     const [a, b] = pairs[Math.floor(rnd() * pairs.length)];
@@ -464,7 +490,7 @@ export function choose(g: Game, c: Card, at?: number) {
   const d = c.kind === 'new' ? g.defenders.find((x) => x.id === g.nextId - 1) : g.defenders.find((x) => x.id === c.target);
   const gl = GLOBAL_CARDS.find((x) => x.id === c.id);
   const [x, y] = d ? [d.x, d.y] : gl?.struct ? [0, -(c.id === 'aura' ? 70 : 104)] : [0, 0];
-  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip' || c.kind === 'chipup';
+  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip' || c.kind === 'chipup' || c.kind === 'coreevo';
   g.fx.push({ k: 'ring', x, y, r0: 6, r1: big ? 90 : 44, life: big ? 0.8 : 0.5, max: big ? 0.8 : 0.5, c: c.color, w: big ? 5 : 3 });
   g.fx.push({ k: 'flash', x, y, r: big ? 50 : 24, life: 0.3, max: 0.3, c: c.color });
   g.fx.push({ k: 'txt', x, y: y - 18, s: c.title, life: 1.4, max: 1.4, c: c.color });
