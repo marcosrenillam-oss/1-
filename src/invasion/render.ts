@@ -388,7 +388,8 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
   // The core grows with every defender on its ring and with each evolution.
   const n = g.defenders.filter((d) => !d.chip).length;
   const evo = g.g.coreEvo;
-  const grow = 1 + Math.max(0, n - 1) * 0.045 + evo * 0.22;
+  // Kept modest so the chip sits in harmony with the defenders around it.
+  const grow = 0.8 + Math.min(9, Math.max(0, n - 1)) * 0.025 + evo * 0.07;
   const R0 = CORE_R * grow;
   // Glow
   ctx.globalCompositeOperation = 'lighter';
@@ -408,17 +409,17 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
     ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 6]);
     ctx.beginPath();
-    arc(ctx, 0, 0, R0 + 30, 0, TAU);
+    arc(ctx, 0, 0, R0 + 24, 0, TAU);
     ctx.stroke();
     ctx.setLineDash([]);
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * TAU;
       ctx.fillStyle = k % 2 ? '#ffd60a' : col;
       ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * (R0 + 30), Math.sin(a) * (R0 + 30) - 4);
-      ctx.lineTo(Math.cos(a) * (R0 + 30) + 3, Math.sin(a) * (R0 + 30));
-      ctx.lineTo(Math.cos(a) * (R0 + 30), Math.sin(a) * (R0 + 30) + 4);
-      ctx.lineTo(Math.cos(a) * (R0 + 30) - 3, Math.sin(a) * (R0 + 30));
+      ctx.moveTo(Math.cos(a) * (R0 + 24), Math.sin(a) * (R0 + 24) - 3.5);
+      ctx.lineTo(Math.cos(a) * (R0 + 24) + 2.5, Math.sin(a) * (R0 + 24));
+      ctx.lineTo(Math.cos(a) * (R0 + 24), Math.sin(a) * (R0 + 24) + 3.5);
+      ctx.lineTo(Math.cos(a) * (R0 + 24) - 2.5, Math.sin(a) * (R0 + 24));
       ctx.fill();
     }
     ctx.restore();
@@ -429,7 +430,7 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
     ctx.strokeStyle = hexA('#ff5f8f', 0.55);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.ellipse(0, 0, R0 + 40, R0 + 16, 0, 0, TAU);
+    ctx.ellipse(0, 0, R0 + 29, R0 + 12, 0, 0, TAU);
     ctx.stroke();
     ctx.restore();
   }
@@ -438,11 +439,11 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth = 4;
   ctx.beginPath();
-  arc(ctx, 0, 0, R0 + 10, 0, TAU);
+  arc(ctx, 0, 0, R0 + 8, 0, TAU);
   ctx.stroke();
   ctx.strokeStyle = frac > 0.35 ? col : '#ff3b3b';
   ctx.beginPath();
-  arc(ctx, 0, 0, R0 + 10, -Math.PI / 2, -Math.PI / 2 + TAU * frac);
+  arc(ctx, 0, 0, R0 + 8, -Math.PI / 2, -Math.PI / 2 + TAU * frac);
   ctx.stroke();
   // One lit segment per defender on the ring (1 to 10)
   for (let k = 0; k < 10; k++) {
@@ -452,7 +453,7 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
     ctx.strokeStyle = d ? DEF_INFO[d.kind].color : 'rgba(255,255,255,0.08)';
     ctx.lineWidth = d ? 3 : 1.5;
     ctx.beginPath();
-    arc(ctx, 0, 0, R0 + 17, a0, a1);
+    arc(ctx, 0, 0, R0 + 13, a0, a1);
     ctx.stroke();
   }
   // Shield bubbles
@@ -460,7 +461,7 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
     const a = -Math.PI / 2 + (k + 0.5) * (TAU / g.g.shieldMax) + t * 0.5;
     ctx.fillStyle = k < g.g.shield ? '#8af3ff' : 'rgba(138,243,255,0.18)';
     ctx.beginPath();
-    arc(ctx, Math.cos(a) * (R0 + 24), Math.sin(a) * (R0 + 24), 3, 0, TAU);
+    arc(ctx, Math.cos(a) * (R0 + 18), Math.sin(a) * (R0 + 18), 2.5, 0, TAU);
     ctx.fill();
   }
   // Chip body: your own chip when it's available
@@ -469,11 +470,12 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
   ctx.scale(pulse, pulse);
   const s = R0 * 0.95;
   if (img) {
-    const S = s * 1.6;
+    // The SVG includes the pins, so it fills a little past the body.
+    const S = s * 1.15;
     ctx.drawImage(img, -S, -S, S * 2, S * 2);
     if (g.hurt > 0) {
       ctx.fillStyle = `rgba(255,59,59,${g.hurt * 0.5})`;
-      roundRect(ctx, -s, -s, s * 2, s * 2, 6);
+      roundRect(ctx, -s * 0.8, -s * 0.8, s * 1.6, s * 1.6, 5);
       ctx.fill();
     }
     ctx.restore();
