@@ -1,6 +1,6 @@
 import { addEnergy } from '../engine/core';
 import type { SaveData } from '../storage/persistence';
-import { datosFor, energyFor } from './sim';
+import { datosFor, energyFor, threatMul } from './sim';
 import { labCost, lootBonus } from './lab';
 import type { Game } from './types';
 
@@ -11,6 +11,9 @@ export interface InvasionResult {
   time: number;
   energy: number;
   datos: number;
+  /** Threat reached and how much it multiplied the rewards. */
+  threat: number;
+  threatMul: number;
   newRecord: boolean;
 }
 
@@ -30,7 +33,7 @@ export function finishInvasion(prev: SaveData, g: Game): { save: SaveData; resul
   inv.bosses += g.bosses;
   inv.run = null;
   addEnergy(save.core, energy);
-  return { save, result: { wave: g.wave, kills: g.kills, bosses: g.bosses, time: g.t, energy, datos, newRecord } };
+  return { save, result: { wave: g.wave, kills: g.kills, bosses: g.bosses, time: g.t, energy, datos, threat: g.g.enemyHp, threatMul: threatMul(g), newRecord } };
 }
 
 /** Buys the next level of a Laboratorio upgrade, or returns null if not possible. */

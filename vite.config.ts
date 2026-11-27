@@ -33,6 +33,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,png,svg,webmanifest}'],
+        // The whole game must work offline: keep the main bundle in the precache.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // Launch images are only read by iOS when the app is added to the home screen.
         globIgnores: ['**/splash/**'],
         navigateFallback: 'index.html',

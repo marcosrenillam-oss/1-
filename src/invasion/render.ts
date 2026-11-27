@@ -1,6 +1,6 @@
-import { behOf, chipPos, CHIPS, DEF_EL, DEF_INFO, ELEMENTS, SYNERGIES, TWIN, type Element } from './defenders';
+import { behOf, chipPos, chipRingR, CHIPS, DEF_EL, DEF_INFO, ELEMENTS, MAIN_CHIPS, SYNERGIES, TRIAD, TWIN, type Element } from './defenders';
 import { CORE_R, ORBIT_R, RING_R, structs, VIRUS, WALL_R } from './sim';
-import type { DefKind, Defender, Game, Virus } from './types';
+import type { DefKind, Defender, Game, Virus, Zone } from './types';
 
 /** ctx.arc that never throws on a shrinking (negative) radius. */
 const arc = (ctx: CanvasRenderingContext2D, x: number, y: number, r: number, a0: number, a1: number, ccw?: boolean) => ctx.arc(x, y, Math.max(0, r), a0, a1, ccw);
@@ -15,6 +15,9 @@ export interface View {
   coreImg?: HTMLImageElement | null;
   /** Lite mode: drops the costliest decoration when frames get slow. */
   lite?: boolean;
+  /** Pause: the selected defender and the one being dragged (world position). */
+  sel?: number | null;
+  drag?: { id: number; x: number; y: number } | null;
 }
 
 /* ── Performance helpers ─────────────────────────────────────────────────
@@ -403,6 +406,7 @@ export function draw(ctx: CanvasRenderingContext2D, g: Game, v: View, bg: HTMLCa
   // Defenders on top
   for (const d of g.defenders) drawDrones(ctx, d, t);
   for (const d of g.defenders) drawDefender(ctx, d, g);
+  if (v.sel != null || v.drag) drawPicking(ctx, g, v);
   for (const d of g.defenders) {
     if (!d.stun || d.stun <= 0) continue;
     ctx.fillStyle = 'rgba(40,40,48,0.6)';
@@ -496,6 +500,22 @@ function drawCore(ctx: CanvasRenderingContext2D, g: Game, col: string, img: HTML
     ctx.beginPath();
     ctx.ellipse(0, 0, R0 + 29, R0 + 12, 0, 0, TAU);
     ctx.stroke();
+    ctx.restore();
+  }
+  if (evo >= 3) {
+    // Trinary core: a spinning triangle of the three cores' colours.
+    ctx.save();
+    ctx.rotate(t * 0.7);
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 3; k++) {
+      const a0 = (k / 3) * TAU - Math.PI / 2;
+      const a1 = ((k + 1) / 3) * TAU - Math.PI / 2;
+      ctx.strokeStyle = hexA(['#c8ff2e', '#ff5f8f', '#ff6bf0'][k], 0.75);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a0) * (R0 + 34), Math.sin(a0) * (R0 + 34));
+      ctx.lineTo(Math.cos(a1) * (R0 + 34), Math.sin(a1) * (R0 + 34));
+      ctx.stroke();
+    }
     ctx.restore();
   }
   // Integrity ring
@@ -735,6 +755,7 @@ function drawVirus(ctx: CanvasRenderingContext2D, v: Virus, t: number) {
       ctx.stroke();
     }
   }
+  xVirus(ctx, v, t, r);
   if (v.rewind) {
     ctx.strokeStyle = 'rgba(196,139,255,0.8)';
     ctx.lineWidth = 1.6;
@@ -802,6 +823,7 @@ function drawVirus(ctx: CanvasRenderingContext2D, v: Virus, t: number) {
 }
 
 function drawDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
+  xDefender(ctx, d, g);
   const c = DEF_INFO[d.kind].color;
   const c2 = d.fuse ? DEF_INFO[d.fuse.kind].color : c;
   const tier = d.fuse ? 3 : d.evo.length;
@@ -1338,6 +1360,10 @@ function livingMap(ctx: CanvasRenderingContext2D, g: Game, v: View) {
 function drawZones(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   for (const z of g.zones) {
     const a = Math.min(1, z.t / 0.4, (z.max - z.t) / 0.2 + 0.2);
+    if (z.k === 'x') {
+      drawXZone(ctx, g, z, t, Math.max(0, a));
+      continue;
+    }
     if (z.k === 'acid') {
       ctx.fillStyle = `rgba(182,255,61,${0.16 * a})`;
       ctx.beginPath();
@@ -1505,28 +1531,35 @@ function drawSynergyLinks(ctx: CanvasRenderingContext2D, g: Game, t: number) {
 
 /** Energy links from the main chip to the outposts. */
 function drawChipLinks(ctx: CanvasRenderingContext2D, g: Game, t: number) {
+  const beam = (A: { x: number; y: number }, B: { x: number; y: number }, c: string) => {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const [w, a] of [[16, 0.15], [7, 0.5], [2.5, 1]] as const) {
+      ctx.strokeStyle = a === 1 ? '#ffffff' : hexA(c, a * (0.8 + Math.random() * 0.4));
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(A.x, A.y);
+      ctx.lineTo(B.x, B.y);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  };
   for (let k = 1; k < g.chips; k++) {
     const P = chipPos(k);
-    const c = CHIPS[k - 1].color;
-    if (k === TWIN) {
-      // The burning beam between the two main cores.
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.lineCap = 'round';
-      for (const [w, a] of [[16, 0.15], [7, 0.5], [2.5, 1]] as const) {
-        ctx.strokeStyle = a === 1 ? '#ffffff' : hexA(c, a * (0.8 + Math.random() * 0.4));
-        ctx.lineWidth = w;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(P.x, P.y);
-        ctx.stroke();
-      }
-      ctx.globalCompositeOperation = 'source-over';
+    const ch = CHIPS[k - 1];
+    const c = ch.color;
+    if (ch.main) {
+      // Burning beams between the main cores.
+      beam({ x: 0, y: 0 }, P, c);
+      if (k === TRIAD) beam(chipPos(TWIN), P, c);
       continue;
     }
+    // An outpost is wired to its own main core.
+    const O = chipPos(MAIN_CHIPS[ch.core]);
     ctx.strokeStyle = hexA(c, 0.25);
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
+    ctx.moveTo(O.x, O.y);
     ctx.lineTo(P.x, P.y);
     ctx.stroke();
     ctx.strokeStyle = hexA(c, 0.8);
@@ -1541,21 +1574,22 @@ function drawChipLinks(ctx: CanvasRenderingContext2D, g: Game, t: number) {
       const f = (t * 0.6 + j * 0.5) % 1;
       const ff = j ? 1 - f : f;
       ctx.beginPath();
-      arc(ctx, P.x * ff, P.y * ff, 2.4, 0, TAU);
+      arc(ctx, O.x + (P.x - O.x) * ff, O.y + (P.y - O.y) * ff, 2.4, 0, TAU);
       ctx.fill();
     }
   }
 }
 
-/** The extra chips: smaller bodies in their own colour, with their ring. */
+/** The extra chips: outposts in their own colour, the main cores bigger. */
 function drawChips(ctx: CanvasRenderingContext2D, g: Game, t: number) {
   for (let k = 1; k < g.chips; k++) {
     const P = chipPos(k);
     const ch = CHIPS[k - 1];
     const c = ch.color;
     const L = g.taken.filter((x) => x === `chipup-${ch.id}`).length;
-    const twin = k === TWIN;
-    const ringR = twin ? 52 : 40;
+    const twin = !!ch.main;
+    const awake = g.taken.includes(`chipevo-${ch.id}`);
+    const ringR = chipRingR(k) + 4;
     ctx.save();
     ctx.translate(P.x, P.y);
     ctx.strokeStyle = hexA(c, 0.2 + L * 0.03);
@@ -1571,32 +1605,57 @@ function drawChips(ctx: CanvasRenderingContext2D, g: Game, t: number) {
       ctx.strokeStyle = hexA(c, 0.35);
       ctx.lineWidth = 1.2;
       ctx.beginPath();
-      arc(ctx, 0, 0, ringR + 10 + r * 7, t * (r % 2 ? -1 : 1), t * (r % 2 ? -1 : 1) + TAU * 0.7);
+      arc(ctx, 0, 0, ringR + 8 + r * 6, t * (r % 2 ? -1 : 1), t * (r % 2 ? -1 : 1) + TAU * 0.7);
       ctx.stroke();
     }
     for (let m = 0; m < L; m++) {
       const a = t * 1.5 + (m / Math.max(1, L)) * TAU;
       ctx.fillStyle = c;
       ctx.beginPath();
-      arc(ctx, Math.cos(a) * (ringR + 6), Math.sin(a) * (ringR + 6), 1.8, 0, TAU);
+      arc(ctx, Math.cos(a) * (ringR + 5), Math.sin(a) * (ringR + 5), 1.8, 0, TAU);
       ctx.fill();
     }
     if (ch.id === 'vacio') {
       for (let r = 0; r < 3; r++) {
         ctx.strokeStyle = hexA(c, 0.25 - r * 0.06);
         ctx.beginPath();
-        ctx.ellipse(0, 0, 60 + r * 14, 30 + r * 8, -t * (1 + r * 0.4), 0, TAU);
+        ctx.ellipse(0, 0, (awake ? 80 : 60) + r * 14, (awake ? 40 : 30) + r * 8, -t * (1 + r * 0.4), 0, TAU);
         ctx.stroke();
       }
     }
     ctx.globalCompositeOperation = 'lighter';
-    const glowR = (twin ? 70 : 44) * (1 + L * 0.04);
-    glow(ctx, 0, 0, glowR, c, 0.3 + L * 0.03);
+    const glowR = (twin ? 70 : 44) * (1 + L * 0.04) * (awake ? 1.45 : 1);
+    glow(ctx, 0, 0, glowR, c, 0.3 + L * 0.03 + (awake ? 0.2 : 0));
     ctx.globalCompositeOperation = 'source-over';
+    if (awake) {
+      // Joint evolution: a rotating star frame and rays.
+      ctx.save();
+      ctx.rotate(t * 0.5);
+      ctx.strokeStyle = hexA(c, 0.85);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let j = 0; j <= 16; j++) {
+        const a = (j / 16) * TAU;
+        const rr = j % 2 ? 19 : 30;
+        if (j) ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        else ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.stroke();
+      ctx.rotate(-t * 1.3);
+      ctx.strokeStyle = hexA('#ffd60a', 0.6);
+      ctx.beginPath();
+      for (let j = 0; j < 6; j++) {
+        const a = (j / 6) * TAU;
+        ctx.moveTo(Math.cos(a) * 34, Math.sin(a) * 34);
+        ctx.lineTo(Math.cos(a) * 44, Math.sin(a) * 44);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     if (L >= 10) {
       ctx.fillStyle = '#ffd60a';
       ctx.beginPath();
-      const cy = -(twin ? 30 : 22) * (1 + L * 0.03);
+      const cy = -(twin ? 30 : 22) * (1 + L * 0.03) - (awake ? 10 : 0);
       ctx.moveTo(-8, cy + 5);
       ctx.lineTo(-5, cy - 4);
       ctx.lineTo(0, cy + 1);
@@ -1606,12 +1665,19 @@ function drawChips(ctx: CanvasRenderingContext2D, g: Game, t: number) {
       ctx.fill();
     }
     ctx.rotate(Math.sin(t * 0.8 + k) * 0.15 + (twin ? 0 : Math.PI / 4));
-    const z = (twin ? 20 : 13) * (1 + Math.sin(t * 3 + k) * 0.04) * (1 + L * 0.04);
+    const z = (twin ? 20 : 13) * (1 + Math.sin(t * 3 + k) * 0.04) * (1 + L * 0.04) * (awake ? 1.15 : 1);
     ctx.fillStyle = '#121418';
-    ctx.strokeStyle = c;
-    ctx.lineWidth = twin ? 3 : 2;
+    ctx.strokeStyle = awake ? '#ffd60a' : c;
+    ctx.lineWidth = twin || awake ? 3 : 2;
     ctx.beginPath();
-    ctx.rect(-z, -z, z * 2, z * 2);
+    if (awake) {
+      // An octagonal gem instead of a square.
+      for (let j = 0; j < 8; j++) {
+        const a = (j / 8) * TAU + Math.PI / 8;
+        ctx.lineTo(Math.cos(a) * z * 1.15, Math.sin(a) * z * 1.15);
+      }
+      ctx.closePath();
+    } else ctx.rect(-z, -z, z * 2, z * 2);
     ctx.fill();
     ctx.stroke();
     if (L >= 5 || twin) {
@@ -1619,19 +1685,378 @@ function drawChips(ctx: CanvasRenderingContext2D, g: Game, t: number) {
       ctx.lineWidth = 1;
       ctx.strokeRect(-z * 0.75, -z * 0.75, z * 1.5, z * 1.5);
     }
-    ctx.fillStyle = hexA(c, 0.5 + Math.sin(t * 4 + k) * 0.2);
+    ctx.fillStyle = hexA(c, 0.5 + Math.sin(t * 4 + k) * 0.2 + (awake ? 0.25 : 0));
     ctx.fillRect(-z * 0.45, -z * 0.45, z * 0.9, z * 0.9);
     if (twin) {
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 11px "Space Grotesk", Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('2%', 0, 0.5);
+      ctx.fillText(`${ch.core + 1}%`, 0, 0.5);
     }
     ctx.restore();
-    ctx.fillStyle = hexA(c, 0.85);
+    ctx.fillStyle = hexA(awake ? '#ffd60a' : c, 0.85);
     ctx.font = '700 9px "Space Grotesk", Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`${ch.name.toUpperCase()}${L ? ` · ${L}` : ''}`, P.x, P.y + (twin ? 74 : 58));
+    ctx.fillText(awake && ch.form ? ch.form.name.toUpperCase() : `${ch.name.toUpperCase()}${L ? ` · ${L}` : ''}`, P.x, P.y + ringR + (twin ? 22 : 18));
+  }
+}
+
+// ── Expansion visuals ───────────────────────────────────────────────────────
+function drawXZone(ctx: CanvasRenderingContext2D, g: Game, z: Zone, t: number, a: number) {
+  const src = g.defenders.find((d) => d.id === z.src);
+  const c = src ? DEF_INFO[src.kind].color : '#ffffff';
+  switch (z.ek) {
+    case 'wave': {
+      const w = z.flags.w;
+      ctx.lineCap = 'round';
+      for (const [lw, al] of [[10, 0.18], [4, 0.6], [1.5, 1]] as const) {
+        ctx.strokeStyle = hexA(c, al * Math.min(1, z.t * 3));
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        arc(ctx, z.x, z.y, z.r, z.flags.a - w, z.flags.a + w);
+        ctx.stroke();
+      }
+      return;
+    }
+    case 'whirl':
+      ctx.strokeStyle = hexA(c, 0.55 * a);
+      ctx.lineWidth = 2;
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        for (let j = 0; j <= 24; j++) {
+          const an = -t * 4 + k * 2.1 + j * 0.28;
+          const rr = z.r * (j / 24);
+          if (j) ctx.lineTo(z.x + Math.cos(an) * rr, z.y + Math.sin(an) * rr);
+          else ctx.moveTo(z.x, z.y);
+        }
+        ctx.stroke();
+      }
+      glow(ctx, z.x, z.y, z.r, c, 0.25 * a);
+      return;
+    case 'geyser': {
+      const k = 1 - z.t / z.max;
+      ctx.strokeStyle = hexA(c, 0.4 + k * 0.5);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      arc(ctx, z.x, z.y, z.r * (1.1 - k * 0.4), 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = hexA(c, 0.15 + k * 0.3);
+      ctx.beginPath();
+      arc(ctx, z.x, z.y, z.r * 0.35 * k, 0, TAU);
+      ctx.fill();
+      return;
+    }
+    case 'tether': {
+      const bx = z.flags.bx ?? z.x;
+      const by = z.flags.by ?? z.y;
+      ctx.strokeStyle = hexA(c, 0.9);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(z.x, z.y);
+      const n = 8;
+      for (let j = 1; j < n; j++) ctx.lineTo(z.x + ((bx - z.x) * j) / n + (Math.random() - 0.5) * 6, z.y + ((by - z.y) * j) / n + (Math.random() - 0.5) * 6);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      return;
+    }
+    case 'rod':
+      ctx.strokeStyle = hexA(c, 0.25 * a);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      arc(ctx, z.x, z.y, z.r, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(z.x, z.y);
+      ctx.lineTo(z.x, z.y - 16);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      arc(ctx, z.x, z.y - 17, 2.4, 0, TAU);
+      ctx.fill();
+      return;
+    case 'spirit':
+      glow(ctx, z.x, z.y - 4, 18, c, 0.6 * a);
+      ctx.fillStyle = hexA('#ffffff', 0.7 * a);
+      ctx.beginPath();
+      arc(ctx, z.x + Math.sin(t * 6) * 4, z.y - 10 + Math.cos(t * 5) * 3, 3.5, 0, TAU);
+      ctx.fill();
+      return;
+    case 'web':
+      ctx.strokeStyle = hexA(c, 0.55 * a);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let j = 0; j < 8; j++) {
+        const an = (j / 8) * TAU;
+        ctx.moveTo(z.x, z.y);
+        ctx.lineTo(z.x + Math.cos(an) * z.r, z.y + Math.sin(an) * z.r);
+      }
+      for (const f of [0.35, 0.65, 0.95]) {
+        for (let j = 0; j <= 8; j++) {
+          const an = (j / 8) * TAU;
+          const x = z.x + Math.cos(an) * z.r * f;
+          const y = z.y + Math.sin(an) * z.r * f;
+          if (j) ctx.lineTo(x, y);
+          else ctx.moveTo(x, y);
+        }
+      }
+      ctx.stroke();
+      return;
+    case 'comet':
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = hexA(c, 0.5);
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(z.x, z.y);
+      ctx.lineTo(z.x - z.flags.vx * 0.12, z.y - z.flags.vy * 0.12);
+      ctx.stroke();
+      glow(ctx, z.x, z.y, 22, c, 0.9, true);
+      ctx.globalCompositeOperation = 'source-over';
+      return;
+    case 'fire':
+    case 'lava': {
+      const lava = z.ek === 'lava';
+      const col = lava ? '#ff6a3d' : '#ffb347';
+      ctx.globalCompositeOperation = 'lighter';
+      glow(ctx, z.x, z.y, z.r * 1.2, col, (lava ? 0.55 : 0.35) * a);
+      ctx.globalCompositeOperation = 'source-over';
+      if (lava) {
+        ctx.strokeStyle = hexA('#ffd27a', 0.6 * a);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        arc(ctx, z.x, z.y, z.r * (0.8 + Math.sin(t * 5) * 0.05), 0, TAU);
+        ctx.stroke();
+      }
+      return;
+    }
+    case 'nebula':
+      for (let k = 0; k < 4; k++) glow(ctx, z.x + Math.cos(t * 0.7 + k * 1.6) * z.r * 0.35, z.y + Math.sin(t * 0.9 + k * 1.6) * z.r * 0.35, z.r * 0.8, k % 2 ? c : '#9d7bff', 0.28 * a);
+      return;
+    case 'sand':
+      ctx.fillStyle = hexA(c, 0.14 * a);
+      ctx.beginPath();
+      arc(ctx, z.x, z.y, z.r, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = hexA(c, 0.45 * a);
+      ctx.lineWidth = 1.2;
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        arc(ctx, z.x, z.y, z.r * (0.3 + k * 0.3), t * (k + 1), t * (k + 1) + 4);
+        ctx.stroke();
+      }
+      return;
+    case 'geode': {
+      const hpK = Math.max(0.2, Math.min(1, z.flags.hp / 60));
+      ctx.save();
+      ctx.translate(z.x, z.y);
+      ctx.rotate(z.flags.ang + Math.PI / 2);
+      ctx.fillStyle = hexA(c, 0.35 + hpK * 0.3);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-z.r, 4);
+      ctx.lineTo(-z.r * 0.6, -10);
+      ctx.lineTo(-z.r * 0.1, -4);
+      ctx.lineTo(z.r * 0.3, -14);
+      ctx.lineTo(z.r, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+  }
+}
+
+function xVirus(ctx: CanvasRenderingContext2D, v: Virus, t: number, r: number) {
+  if (v.curse) {
+    ctx.strokeStyle = 'rgba(180,107,255,0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let k = 0; k < 3; k++) {
+      const a = t * 2 + (k / 3) * TAU;
+      ctx.moveTo(Math.cos(a) * r * 1.5 + 2, Math.sin(a) * r * 1.5);
+      arc(ctx, Math.cos(a) * r * 1.5, Math.sin(a) * r * 1.5, 2, 0, TAU);
+    }
+    ctx.stroke();
+  }
+  if (v.mut) {
+    ctx.fillStyle = 'rgba(156,255,61,0.85)';
+    for (let k = 0; k < 4; k++) {
+      ctx.beginPath();
+      arc(ctx, Math.cos(k * 1.7) * r * 0.6, Math.sin(k * 2.3) * r * 0.6, 1.8, 0, TAU);
+      ctx.fill();
+    }
+  }
+  if (v.echo) {
+    ctx.strokeStyle = `rgba(160,255,240,${0.5 + Math.sin(t * 8) * 0.25})`;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    arc(ctx, 0, 0, r * 1.45, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (v.crystal) {
+    ctx.fillStyle = 'rgba(179,240,255,0.45)';
+    ctx.strokeStyle = '#e6fdff';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * TAU;
+      ctx.lineTo(Math.cos(a) * r * 1.35, Math.sin(a) * r * 1.35);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  if (v.confuse) {
+    ctx.fillStyle = '#ff8ad8';
+    for (let k = 0; k < 3; k++) {
+      const a = t * 5 + (k / 3) * TAU;
+      ctx.beginPath();
+      arc(ctx, Math.cos(a) * r * 1.2, Math.sin(a) * r * 1.2 - r * 0.6, 1.6, 0, TAU);
+      ctx.fill();
+    }
+  }
+  if (v.silence) {
+    ctx.strokeStyle = 'rgba(232,255,224,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.7, -r * 0.7);
+    ctx.lineTo(r * 0.7, r * 0.7);
+    ctx.moveTo(r * 0.7, -r * 0.7);
+    ctx.lineTo(-r * 0.7, r * 0.7);
+    ctx.stroke();
+  }
+}
+
+function xDefender(ctx: CanvasRenderingContext2D, d: Defender, g: Game) {
+  const c = DEF_INFO[d.kind].color;
+  const f = d.flags;
+  const t = g.t;
+  switch (d.kind) {
+    case 'sol':
+      if (f.sx === undefined) return;
+      ctx.globalCompositeOperation = 'lighter';
+      glow(ctx, f.sx, f.sy, 22, c, 0.8, true);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath();
+      arc(ctx, f.sx, f.sy, 5.5 + Math.sin(t * 9) * 0.6, 0, TAU);
+      ctx.fill();
+      return;
+    case 'pendulo': {
+      if (f.pa === undefined) return;
+      const L = d.stats.range * g.g.rangeMul * 0.6;
+      const x = d.x + Math.cos(f.pa) * L;
+      const y = d.y + Math.sin(f.pa) * L;
+      ctx.strokeStyle = hexA(c, 0.5);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(f.pa + Math.PI / 2);
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.moveTo(-9, 0);
+      ctx.quadraticCurveTo(0, 9, 9, 0);
+      ctx.lineTo(0, -3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+    case 'bobina':
+    case 'supernova': {
+      const k = f.charge ?? 0;
+      if (k <= 0.02) return;
+      ctx.strokeStyle = hexA(c, 0.3 + k * 0.6);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      arc(ctx, d.x, d.y, 16, -Math.PI / 2, -Math.PI / 2 + TAU * k);
+      ctx.stroke();
+      if (d.kind === 'supernova') {
+        ctx.globalCompositeOperation = 'lighter';
+        glow(ctx, d.x, d.y, 14 + k * 26, c, 0.2 + k * 0.5);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      return;
+    }
+    case 'graviton':
+      ctx.strokeStyle = hexA(c, 0.18);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 6]);
+      ctx.lineDashOffset = -t * 30;
+      ctx.beginPath();
+      arc(ctx, d.x, d.y, d.stats.range * g.g.rangeMul, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    case 'lapida': {
+      const n = Math.min(12, f.souls ?? 0);
+      ctx.fillStyle = hexA('#d9c2ff', 0.8);
+      for (let k = 0; k < n; k++) {
+        const a = t * 1.8 + (k / Math.max(1, n)) * TAU;
+        ctx.beginPath();
+        arc(ctx, d.x + Math.cos(a) * 20, d.y + Math.sin(a) * 20, 1.6, 0, TAU);
+        ctx.fill();
+      }
+      return;
+    }
+  }
+}
+
+/** Pause: the picked defender glows; while dragging, a ghost follows the finger. */
+function drawPicking(ctx: CanvasRenderingContext2D, g: Game, v: View) {
+  const t = g.t;
+  const sel = g.defenders.find((d) => d.id === (v.drag?.id ?? v.sel));
+  if (!sel) return;
+  const c = DEF_INFO[sel.kind].color;
+  // Its ring mates are the places it can go.
+  for (const d of g.defenders) {
+    if (d === sel || (d.chip ?? 0) !== (sel.chip ?? 0)) continue;
+    ctx.strokeStyle = hexA('#ffffff', 0.35 + Math.sin(t * 6) * 0.15);
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    arc(ctx, d.x, d.y, 19, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle = c;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  arc(ctx, sel.x, sel.y, 20 + Math.sin(t * 8) * 1.5, 0, TAU);
+  ctx.stroke();
+  if (v.drag) {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#121418';
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    arc(ctx, v.drag.x, v.drag.y, 14, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(v.drag.x, v.drag.y);
+    glyph(ctx, sel.kind, c, 14, t);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = hexA(c, 0.5);
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(sel.x, sel.y);
+    ctx.lineTo(v.drag.x, v.drag.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 }

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CATALOGUE_SIZE, choose, kindsOf, MAX_DEFENDERS, offer, placements, RARITY_LABEL, type Card, type Placement } from '../invasion/cards';
+import { CATALOGUE_SIZE, choose, choosePact, kindsOf, MAX_DEFENDERS, offer, offerPacts, pactCount, placements, RARITY_LABEL, type Card, type Placement } from '../invasion/cards';
 import { LAB, labCost, labLevel, startOpts } from '../invasion/lab';
 import { DEF_EL, DEF_INFO, defenderName, ELEMENTS, SYNERGIES, ULTS } from '../invasion/defenders';
 import type { InvasionResult } from '../invasion/record';
 import { draw, drawBackground, type View } from '../invasion/render';
-import { BOSS_NAMES, datosFor, energyFor, newGame, rand, restore, snapshot, update, xpNeed, type InvasionSnapshot } from '../invasion/sim';
+import { BOSS_NAMES, datosFor, energyFor, layoutRings, newGame, rand, restore, snapshot, spinRings, update, xpNeed, type InvasionSnapshot } from '../invasion/sim';
 import type { DefKind, Game } from '../invasion/types';
 import type { InvasionRecord } from '../storage/persistence';
 import { IconBack } from '../components/Icons';
@@ -12,11 +12,11 @@ import { haptic } from '../haptics';
 import type { CoreState } from '../engine/core';
 import { chipImage } from '../invasion/coreImage';
 import { Quality } from '../invasion/quality';
-import { mainRing, refreshSynergies } from '../invasion/cards';
+import { refreshSynergies } from '../invasion/cards';
 import { DEF_KINDS } from '../invasion/defenders';
 import { MODS, titanName } from '../invasion/sim';
 import { onSoundPrefs, setMusicIntensity, setSoundPrefs, sfx, soundPrefs, startMusic, stopMusic, unlockAudio } from '../audio';
-import { CHIPS } from '../invasion/defenders';
+import { CHIPS, MAX_CHIPS } from '../invasion/defenders';
 import { motionMs } from '../motion';
 
 interface Props {
@@ -49,7 +49,10 @@ const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60
 /** World units across the short side of the screen. */
 const WORLD = 360;
 /** The view zooms out as chips are added, so all of them fit. */
-const ZOOM = [1, 1.55, 1.6, 1.8, 1.9, 2.05];
+/** Camera zoom-out for each number of chips (up to three main cores with four outposts each). */
+/** Pause close-up on the central chip. */
+const PAUSE_ZOOM = 0.9;
+const ZOOM = [1, 1.55, 1.6, 1.8, 1.9, 2.15, 2.3, 2.4, 2.45, 2.5, 2.6, 2.7, 2.75, 2.8, 2.85];
 
 export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, onSetStart, core, onHome }: Props) {
   const [phase, setPhase] = useState<Phase>('intro');
@@ -57,6 +60,13 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
   phaseRef.current = phase;
   const [hud, setHud] = useState<Hud | null>(null);
   const [cards, setCards] = useState<Card[] | null>(null);
+  const [pacts, setPacts] = useState<Card[] | null>(null);
+  const pactsRef = useRef<Card[] | null>(null);
+  /** Pause: the defender you picked, and the one you are dragging. */
+  const [sel, setSel] = useState<number | null>(null);
+  const selRef = useRef<number | null>(null);
+  selRef.current = sel;
+  const dragRef = useRef<{ id: number; x: number; y: number; sx: number; sy: number; moved: boolean } | null>(null);
   const [paused, setPaused] = useState(false);
   const [banner, setBanner] = useState<{ text: string; sub?: string; boss?: boolean; key: number } | null>(null);
   const [result, setResult] = useState<InvasionResult | null>(null);
@@ -117,6 +127,8 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     finished.current = false;
     setResult(null);
     setCards(null);
+    pactsRef.current = null;
+    setPacts(null);
     setPaused(false);
     setPhase('play');
     unlockAudio();
@@ -169,6 +181,7 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
       if (localStorage.getItem('uno-por-ciento:e2e') === '1') {
         (window as unknown as { __inv?: unknown }).__inv = game;
         (window as unknown as { __invQ?: unknown }).__invQ = quality;
+        (window as unknown as { __invView?: unknown }).__invView = view;
       }
     } catch {
       /* no storage */
@@ -207,12 +220,15 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
       // Slow motion for epic moments.
       if (g.slowmo > 0) g.slowmo = Math.max(0, g.slowmo - real);
       const dt = real * (g.slowmo > 0 ? 0.35 : 1);
-      const running = !pausedRef.current && !cardsRef.current;
+      const running = !pausedRef.current && !cardsRef.current && !pactsRef.current;
       if (running) update(g, dt);
       // Zoom out smoothly when a chip is added.
-      const want = ZOOM[Math.min(ZOOM.length, g.chips) - 1] / userZoom.current;
-      if (Math.abs(want - zoomRef.current) > 0.002) {
-        zoomRef.current += (want - zoomRef.current) * Math.min(1, dt * 2.5);
+      // Paused: the camera closes in on your central chip.
+      const want = pausedRef.current ? PAUSE_ZOOM : ZOOM[Math.min(ZOOM.length, g.chips) - 1] / userZoom.current;
+      if (pausedRef.current && !cardsRef.current && !pactsRef.current) spinRings(g, real);
+      const v0 = view.current;
+      if (Math.abs(want - zoomRef.current) > 0.002 || Math.abs(v0.scale - Math.min(v0.w, v0.h) / (WORLD * zoomRef.current)) > 1e-4) {
+        if (Math.abs(want - zoomRef.current) > 0.002) zoomRef.current += (want - zoomRef.current) * Math.min(1, pausedRef.current ? real * 6 : dt * 2.5);
         const v = view.current;
         v.scale = Math.min(v.w, v.h) / (WORLD * zoomRef.current);
         g.arena = v.w / 2 / v.scale;
@@ -249,7 +265,8 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         else if (e === 'chip') {
           haptic('heavy');
           sfx('chip');
-          showBanner(`¡Nuevo chip: ${CHIPS[g.chips - 2]?.name ?? ''}!`, 'Trabaja conectado al núcleo con sus propios defensores');
+          const ch = CHIPS[g.chips - 2];
+          showBanner(ch?.main ? `¡${ch.core === 1 ? 'Segundo' : 'Tercer'} núcleo: ${ch.name}!` : `¡Nuevo chip: ${ch?.name ?? ''}!`, ch?.main ? 'Un núcleo nuevo con defensores nunca vistos' : 'Trabaja conectado a su núcleo con sus propios defensores');
         }
         else if (e === 'bosskill') {
           haptic('heavy');
@@ -279,8 +296,13 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           showBanner('¡Titán derrotado!', '+3 mejoras', true);
           haptic('heavy');
           sfx('bossdie');
+        } else if (e === 'chipevo') {
+          const ev = [...CHIPS].reverse().find((c) => c.form && g.taken[g.taken.length - 1] === `chipevo-${c.id}`) ?? CHIPS.find((c) => g.taken.includes(`chipevo-${c.id}`));
+          showBanner(`¡Evolución conjunta: ${ev?.form?.name ?? ''}!`, `Chip ${ev?.name ?? ''} al máximo`, true);
+          haptic('heavy');
+          sfx('fusion');
         } else if (e === 'coreevo') {
-          showBanner('¡El núcleo evoluciona!', undefined, true);
+          showBanner(['', '¡El núcleo evoluciona!', '¡Núcleo binario!', '¡Núcleo trinario!'][g.g.coreEvo] ?? '¡El núcleo evoluciona!', g.g.coreEvo < 3 ? 'Se abre un núcleo nuevo' : 'La forma final', true);
           haptic('heavy');
           sfx('chip');
         } else if (e === 'wallbreak') {
@@ -298,6 +320,14 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         cardsRef.current = o;
         setCards(o);
         haptic('success');
+      } else if (running && g.pact && !g.over) {
+        // End of a wave: choose one pact.
+        const o = offerPacts(g, () => rand(g));
+        if (o.length) {
+          pactsRef.current = o;
+          setPacts(o);
+          haptic('heavy');
+        } else g.pact = false;
       }
       if (g.over && !finished.current) {
         finished.current = true;
@@ -311,7 +341,8 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
       }
       const ctx = c.getContext('2d', { alpha: false });
       const q = quality.current;
-      if (ctx && bg.current) draw(ctx, g, { ...view.current, coreImg: coreImg.current, lite: q.step.lite }, bg.current, c.width / view.current.w);
+      const dr = dragRef.current;
+      if (ctx && bg.current) draw(ctx, g, { ...view.current, coreImg: coreImg.current, lite: q.step.lite, sel: pausedRef.current ? selRef.current : null, drag: pausedRef.current && dr?.moved ? { id: dr.id, x: dr.x, y: dr.y } : null }, bg.current, c.width / view.current.w);
       // Adapt effects and resolution to keep the frame rate up.
       if (q.sample(interval, performance.now() - t0) && q.step.dpr !== dprRef.current) fitRef.current();
       hudT -= dt;
@@ -365,6 +396,15 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
       setCards(null);
     }
   };
+  const pickPact = (c: Card) => {
+    const g = game.current;
+    if (!g) return;
+    choosePact(g, c);
+    sfx('pick');
+    haptic('heavy');
+    pactsRef.current = null;
+    setPacts(null);
+  };
   const reroll = () => {
     const g = game.current;
     if (!g || g.g.rerolls <= 0) return;
@@ -374,19 +414,41 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     cardsRef.current = o;
     setCards(o);
   };
-  /** Formation: swap a main-ring defender with its neighbour. */
-  const moveDef = (id: number, dir: number) => {
+  /** Formation: swap two defenders of the same ring. */
+  const swapDefs = (a: number, b: number) => {
     const g = game.current;
-    if (!g) return;
-    const n = mainRing(g).length;
-    const i = g.defenders.findIndex((d) => d.id === id);
-    if (i < 0 || i >= n) return;
-    const j = (i + dir + n) % n;
+    if (!g || a === b) return;
+    const i = g.defenders.findIndex((d) => d.id === a);
+    const j = g.defenders.findIndex((d) => d.id === b);
+    if (i < 0 || j < 0 || (g.defenders[i].chip ?? 0) !== (g.defenders[j].chip ?? 0)) return;
     [g.defenders[i], g.defenders[j]] = [g.defenders[j], g.defenders[i]];
     refreshSynergies(g);
     g.events = g.events.filter((e) => !e.startsWith('syn:'));
-    haptic('tap');
+    layoutRings(g);
+    haptic('success');
+    sfx('pick');
     setHud((h) => (h ? { ...h } : h));
+  };
+  /** Screen point → world. */
+  const toWorld = (e: { clientX: number; clientY: number }) => {
+    const r = canvas.current!.getBoundingClientRect();
+    const v = view.current;
+    return { x: (e.clientX - r.left - v.w / 2) / v.scale, y: (e.clientY - r.top - v.h / 2) / v.scale };
+  };
+  const defAt = (p: { x: number; y: number }, skip?: number) => {
+    const g = game.current;
+    if (!g) return null;
+    let best: Game['defenders'][number] | null = null;
+    let bd = 26 * 26;
+    for (const d of g.defenders) {
+      if (d.id === skip) continue;
+      const dd = (d.x - p.x) ** 2 + (d.y - p.y) ** 2;
+      if (dd < bd) {
+        bd = dd;
+        best = d;
+      }
+    }
+    return best;
   };
   const endNow = () => {
     const g = game.current;
@@ -394,17 +456,32 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
     g.over = true;
     setPaused(false);
   };
+  const resume = () => {
+    setSel(null);
+    dragRef.current = null;
+    setPaused(false);
+  };
 
   const g = game.current;
   const evoCards = cards?.[0]?.kind === 'evo';
 
   return (
-    <div className="inv" ref={wrap}>
+    <div className={`inv${paused && phase === 'play' ? ' is-paused' : ''}`} ref={wrap}>
       <canvas
         ref={canvas}
         className="inv-canvas"
         aria-label="Tablero de la invasión"
         onPointerDown={(e) => {
+          if (pausedRef.current) {
+            // Pause: pick up a defender to move it.
+            const p = toWorld(e);
+            const d = defAt(p);
+            if (d) {
+              dragRef.current = { id: d.id, x: p.x, y: p.y, sx: e.clientX, sy: e.clientY, moved: false };
+              (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+            } else setSel(null);
+            return;
+          }
           pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (pointers.current.size === 2) {
             const [a, b] = [...pointers.current.values()];
@@ -412,6 +489,14 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           }
         }}
         onPointerMove={(e) => {
+          const dr = dragRef.current;
+          if (pausedRef.current && dr) {
+            const p = toWorld(e);
+            dr.x = p.x;
+            dr.y = p.y;
+            if (Math.hypot(e.clientX - dr.sx, e.clientY - dr.sy) > 8) dr.moved = true;
+            return;
+          }
           if (!pointers.current.has(e.pointerId)) return;
           pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
           if (pointers.current.size === 2 && pinch0.current) {
@@ -421,6 +506,23 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           }
         }}
         onPointerUp={(e) => {
+          const dr = dragRef.current;
+          if (pausedRef.current && dr) {
+            dragRef.current = null;
+            const g = game.current;
+            const me = g?.defenders.find((d) => d.id === dr.id);
+            if (dr.moved) {
+              // Dropped on a ring mate: they swap places.
+              const o = defAt(toWorld(e), dr.id);
+              if (o && me && (o.chip ?? 0) === (me.chip ?? 0)) swapDefs(dr.id, o.id);
+              setSel(dr.id);
+            } else if (sel !== null && sel !== dr.id && me && (g?.defenders.find((d) => d.id === sel)?.chip ?? 0) === (me.chip ?? 0)) {
+              // Tap one, then tap another: swap.
+              swapDefs(sel, dr.id);
+              setSel(null);
+            } else setSel(sel === dr.id ? null : dr.id);
+            return;
+          }
           pointers.current.delete(e.pointerId);
           if (pointers.current.size < 2) pinch0.current = null;
         }}
@@ -658,61 +760,34 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
         </div>
       )}
 
-      {phase === 'play' && paused && g && (
-        <div className="inv-sheet" role="dialog" aria-label="Pausa">
+      {phase === 'play' && pacts && g && !cards && (
+        <div className="inv-sheet" role="dialog" aria-label="Elige un pacto">
           <div className="inv-sheet-card">
-            <span className="eyebrow">Pausa · {fmtTime(g.t)}</span>
-            <p className="inv-sheet-title display">Tu defensa</p>
-            <ul className="inv-build">
-              {g.defenders.map((d) => (
-                <li key={d.id} style={{ ['--c' as string]: DEF_INFO[d.kind].color, ['--c2' as string]: d.fuse ? DEF_INFO[d.fuse.kind].color : DEF_INFO[d.kind].color }} className={d.fuse ? 'is-fused' : ''}>
-                  <span className="inv-build-dot" />
-                  <span className="inv-build-name">{defenderName(d)}</span>
-                  {!d.chip && mainRing(g).length > 2 && (
-                    <span className="inv-move">
-                      <button type="button" aria-label={`Mover ${defenderName(d)} a la izquierda`} onClick={() => moveDef(d.id, -1)}>‹</button>
-                      <button type="button" aria-label={`Mover ${defenderName(d)} a la derecha`} onClick={() => moveDef(d.id, 1)}>›</button>
-                    </span>
-                  )}
-                  <span className="inv-build-meta tnum">
-                    <i style={{ color: ELEMENTS[DEF_EL[d.kind]].color }}>{ELEMENTS[DEF_EL[d.kind]].name}</i> · {ULTS[d.kind].name} · nv {d.lvl} · {fmt(d.kills)}
+            <span className="eyebrow">Oleada {g.wave} superada</span>
+            <p className="inv-sheet-title display">Elige un pacto</p>
+            <div className="inv-cards">
+              {pacts.map((c, i) => (
+                <button key={c.key} type="button" className="inv-card inv-card--pact inv-card--epica" style={{ ['--c' as string]: c.color, ['--c2' as string]: c.color, ['--i' as string]: i }} onClick={() => pickPact(c)}>
+                  <span className="inv-card-top">
+                    <span className="inv-card-tag">{c.tag}</span>
+                    <span className="inv-card-rarity">Pacto</span>
                   </span>
-                </li>
+                  <span className="inv-card-title display">{c.title}</span>
+                  <span className="inv-card-desc">{c.desc}</span>
+                </button>
               ))}
-            </ul>
-            {g.syn.length > 0 && (
-              <ul className="inv-syn">
-                {g.syn.map((id) => {
-                  const sy = SYNERGIES.find((x) => x.id === id)!;
-                  return (
-                    <li key={id} style={{ ['--c' as string]: DEF_INFO[sy.a].color, ['--c2' as string]: DEF_INFO[sy.b].color }}>
-                      <b>{sy.name}</b> {sy.desc}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <p className="inv-build-sum tnum">
-              {g.taken.length} mejoras · {new Set(g.taken).size} distintas de {CATALOGUE_SIZE} · ⚡ {fmt(energyFor(g))} y ◆ {fmt(datosFor(g))} si terminas ahora
-            </p>
-            <div className="inv-sound-row">
-              <button type="button" className={`inv-toggle${prefs.sfx ? ' is-on' : ''}`} aria-pressed={prefs.sfx} onClick={() => toggleSound('sfx')}>
-                Efectos {prefs.sfx ? 'sí' : 'no'}
-              </button>
-              <button type="button" className={`inv-toggle${prefs.music ? ' is-on' : ''}`} aria-pressed={prefs.music} onClick={() => toggleSound('music')}>
-                Música {prefs.music ? 'sí' : 'no'}
-              </button>
             </div>
-                        <div className="inv-pause-cta">
-              <button type="button" className="btn btn-primary btn-lg" onClick={() => setPaused(false)}>
-                Continuar
-              </button>
-              <button type="button" className="btn btn-ghost btn-lg btn-danger" onClick={endNow}>
-                Terminar partida
-              </button>
+            <div className="inv-sheet-foot">
+              <span className="tnum">
+                {pactCount(g)} pactos · experiencia +{Math.round((g.g.xpMul - 1) * 100)} % · amenaza ×{g.g.enemyHp.toFixed(1).replace('.', ',')}
+              </span>
             </div>
           </div>
         </div>
+      )}
+
+      {phase === 'play' && paused && g && !cards && !pacts && (
+        <PauseView g={g} sel={sel} prefs={prefs} onToggle={toggleSound} onResume={resume} onEnd={endNow} />
       )}
 
       {phase === 'over' && result && (
@@ -735,6 +810,18 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
                 <span>tiempo</span>
               </div>
             </div>
+            {result.threat !== undefined && (
+              <div className="inv-over-meter" aria-label={`Amenaza ×${result.threat.toFixed(1)}: recompensas ×${result.threatMul.toFixed(2)}`}>
+                <div className="inv-over-meter-row">
+                  <span>Amenaza ×{result.threat.toFixed(1).replace('.', ',')}</span>
+                  <b className="tnum">recompensas ×{result.threatMul.toFixed(2).replace('.', ',')}</b>
+                </div>
+                <div className="inv-over-meter-bar">
+                  <span style={{ transform: `scaleX(${Math.min(1, Math.log(Math.max(1, result.threat)) / Math.log(60))})` }} />
+                </div>
+                <small>Cuanto más lejos llegas y más dura es la amenaza, más ganas.</small>
+              </div>
+            )}
             <div className="inv-over-loot">
               {result.energy > 0 && <span className="energy-pill display tnum">+{fmt(result.energy)} ⚡ Núcleo</span>}
               {result.datos > 0 && <span className="energy-pill energy-pill--datos display tnum">+{fmt(result.datos)} ◆ Laboratorio</span>}
@@ -750,6 +837,64 @@ export function InvasionScreen({ record, color, onSnapshot, onFinish, onBuyLab, 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Pause: the camera is on your central chip; stats on one side, actions on the other. */
+function PauseView({ g, sel, prefs, onToggle, onResume, onEnd }: { g: Game; sel: number | null; prefs: { sfx: boolean; music: boolean }; onToggle: (k: 'sfx' | 'music') => void; onResume: () => void; onEnd: () => void }) {
+  const d = g.defenders.find((x) => x.id === sel) ?? null;
+  const ring = d ? g.defenders.filter((x) => (x.chip ?? 0) === (d.chip ?? 0)) : [];
+  const i = d ? ring.indexOf(d) : -1;
+  const nb = d && ring.length > 1 ? [ring[(i - 1 + ring.length) % ring.length], ring[(i + 1) % ring.length]].filter((x, k, a) => x !== d && a.indexOf(x) === k) : [];
+  const adj = d ? SYNERGIES.filter((sy) => g.synAdj.includes(sy.id) && kindsOf(d).some((k) => k === sy.a || k === sy.b)) : [];
+  return (
+    <div className="inv-pausev" role="dialog" aria-label="Pausa">
+      <div className="inv-pausev-side inv-pausev-stats">
+        <span className="eyebrow">Pausa · {fmtTime(g.t)}</span>
+        <dl className="inv-pausev-grid tnum">
+          <div><dt>Oleada</dt><dd>{g.wave}</dd></div>
+          <div><dt>Nivel</dt><dd>{g.level}</dd></div>
+          <div><dt>Virus</dt><dd>{fmt(g.kills)}</dd></div>
+          <div><dt>Mejoras</dt><dd>{g.taken.length}</dd></div>
+          <div><dt>Pactos</dt><dd>{pactCount(g)}</dd></div>
+          <div><dt>Experiencia</dt><dd>+{Math.round((g.g.xpMul - 1) * 100)} %</dd></div>
+          <div><dt>Amenaza</dt><dd>×{g.g.enemyHp.toFixed(1).replace('.', ',')}</dd></div>
+          <div><dt>Chips</dt><dd>{g.chips}/{MAX_CHIPS}</dd></div>
+        </dl>
+        <p className="inv-pausev-loot tnum">Si terminas ahora: ⚡ {fmt(energyFor(g))} · ◆ {fmt(datosFor(g))}</p>
+        <div className="inv-sound-row">
+          <button type="button" className={`inv-toggle${prefs.sfx ? ' is-on' : ''}`} aria-pressed={prefs.sfx} onClick={() => onToggle('sfx')}>
+            Efectos {prefs.sfx ? 'sí' : 'no'}
+          </button>
+          <button type="button" className={`inv-toggle${prefs.music ? ' is-on' : ''}`} aria-pressed={prefs.music} onClick={() => onToggle('music')}>
+            Música {prefs.music ? 'sí' : 'no'}
+          </button>
+        </div>
+      </div>
+      <div className="inv-pausev-side inv-pausev-actions">
+        {d ? (
+          <div className="inv-pausev-pick" style={{ ['--c' as string]: DEF_INFO[d.kind].color }}>
+            <b>{defenderName(d)}</b>
+            <span className="tnum">
+              <i style={{ color: ELEMENTS[DEF_EL[d.kind]].color }}>{ELEMENTS[DEF_EL[d.kind]].name}</i> · nv {d.lvl} · {fmt(d.kills)} virus · {ULTS[d.kind].name}
+            </span>
+            {nb.length > 0 && <span>Vecinos: {nb.map((x) => defenderName(x)).join(' y ')}</span>}
+            {adj.length > 0 && <span className="inv-pausev-syn">Sinergia de vecinos: {adj.map((x) => x.name).join(', ')}</span>}
+            <small>Arrástralo sobre otro de su anillo, o toca el otro, para cambiarlos.</small>
+          </div>
+        ) : (
+          <p className="inv-pausev-hint">Toca un defensor para elegirlo y arrástralo a otro sitio de su anillo.</p>
+        )}
+        <div className="inv-pause-cta inv-pausev-cta">
+          <button type="button" className="btn btn-primary btn-lg" onClick={onResume}>
+            Continuar
+          </button>
+          <button type="button" className="btn btn-ghost btn-lg btn-danger" onClick={onEnd}>
+            Terminar partida
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

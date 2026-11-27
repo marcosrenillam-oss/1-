@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CATALOGUE_SIZE, chipReady, choose, refreshSynergies, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
+import { choosePact, offerPacts, CATALOGUE_SIZE, chipReady, choose, refreshSynergies, fusablePairs, GLOBAL_CARDS, levelOf, MAX_DEFENDERS, offer, PACT_CARDS, placements, STAT_CARDS, addDefender, kindsOf, type Card } from './cards';
 import { buyLab } from './record';
 import { LAB, NEW_KINDS, startOpts } from './lab';
-import { ALL_KINDS, BASE_KINDS, chipPos, CHIPS, DEF_KINDS, effectiveness, EVOS, evoOptions, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
+import { ALL_KINDS, BASE_KINDS, chipOfKind, chipPos, CHIPS, DEF_KINDS, effectiveness, EVOS, evoOptions, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
 import { finishInvasion } from './record';
-import { energyFor, hit, MODS, newGame, rand, restore, snapshot, structs, update, WALL_R } from './sim';
+import { datosFor, energyFor, hit, MODS, newGame, rand, restore, snapshot, structs, update, WALL_R, xpNeed } from './sim';
 import type { Game } from './types';
 import { emptySave, normalize } from '../storage/persistence';
 
@@ -241,7 +241,7 @@ describe('Invasión', () => {
     const back = restore(JSON.parse(JSON.stringify(snapshot(g))), 300);
     expect(back.chips).toBe(2);
     expect(back.defenders.filter((d) => d.chip === 1)).toHaveLength(g.defenders.filter((d) => d.chip === 1).length);
-    expect(MAX_CHIPS).toBe(6);
+    expect(MAX_CHIPS).toBe(15);
   });
 
   it('every exclusive chip defender has its own new attack and works', () => {
@@ -267,7 +267,7 @@ describe('Invasión', () => {
     for (const kind of ALL_KINDS) {
       const g = newGame(42, 300, 400);
       g.defenders = [];
-      g.chips = 6;
+      g.chips = chipOfKind(kind) + 1;
       const d = addDefender(g, kind);
       d.ult = 0.999;
       let fired = false;
@@ -348,22 +348,47 @@ describe('Invasión', () => {
     expect(stunned).toBe(true);
   });
 
-  it('with the four outposts maxed the core evolves, then a second main core appears', () => {
+  it('outposts at level 10 evolve together; four of them evolve the core, then a new main core comes, up to three', () => {
     const g = newGame(54, 300, 400, { unlocked: [...DEF_KINDS] });
     g.chips = 5;
-    for (const ch of CHIPS.slice(0, 4)) for (let k = 0; k < 10; k++) g.taken.push(`chipup-${ch.id}`);
     g.level = 80;
-    let evo;
-    for (let k = 0; k < 30 && !evo; k++) evo = offer(g, () => rand(g)).find((c) => c.kind === 'coreevo');
+    const pick = (kind: string) => {
+      for (let k = 0; k < 60; k++) {
+        const c = offer(g, () => rand(g)).find((x) => x.kind === kind);
+        if (c) return c;
+      }
+      return undefined;
+    };
+    // Each outpost: three defenders and level 10 → a joint evolution.
+    for (const [i, ch] of CHIPS.slice(0, 4).entries()) {
+      for (const kind of ch.kinds) if (!g.defenders.some((d) => d.kind === kind)) addDefender(g, kind);
+      expect(offer(g, () => rand(g)).some((c) => c.id === `chipevo-${ch.id}`)).toBe(false);
+      for (let k = 0; k < 10; k++) g.taken.push(`chipup-${ch.id}`);
+      if (i < 3) {
+        const evo = pick('chipevo');
+        expect(evo?.title).toBe(ch.form!.name);
+        const before = g.defenders.find((d) => d.chip === i + 1)!.stats.dmg;
+        choose(g, evo!);
+        expect(g.defenders.find((d) => d.chip === i + 1)!.stats.dmg).toBeCloseTo(before * 2);
+      }
+    }
+    // Three of four evolved: no core evolution yet.
+    expect(offer(g, () => rand(g)).some((c) => c.kind === 'coreevo')).toBe(false);
+    choose(g, pick('chipevo')!);
+    const evo = pick('coreevo');
     expect(evo?.title).toBe('Evolución del núcleo');
     choose(g, evo!);
     expect(g.g.coreEvo).toBe(1);
-    let twin;
-    for (let k = 0; k < 60 && !twin; k++) twin = offer(g, () => rand(g)).find((c) => c.kind === 'chip');
+    const twin = pick('chip');
     expect(twin?.title).toContain('Anomalía');
     choose(g, twin!);
     expect(g.chips).toBe(6);
     expect(g.defenders.some((d) => d.chip === 5)).toBe(true);
+    // Its own outposts bring defenders found nowhere else.
+    const seen = new Set(CHIPS.slice(0, 5).flatMap((c) => c.kinds));
+    for (const c of CHIPS.slice(5)) for (const k of c.kinds) expect(seen.has(k)).toBe(false);
+    expect(CHIPS.filter((c) => c.main)).toHaveLength(2);
+    expect(MAX_CHIPS).toBe(15);
   });
 
   it('formation: moving a defender changes who its neighbours are', () => {
@@ -406,5 +431,52 @@ describe('Invasión', () => {
     save = normalize(JSON.parse(JSON.stringify({ ...after, invasion: { ...after.invasion, run: snapshot(g) } })));
     expect(save.invasion.run?.wave).toBe(g.wave - 1);
     expect(normalize({ version: 2 }).invasion.bestWave).toBe(0);
+  });
+  it('rewards grow with the wave and the threat, with no fixed cap', () => {
+    const at = (w: number, thr: number, kills: number) => {
+      const g = newGame(1);
+      g.wave = w;
+      g.g.enemyHp = thr;
+      g.kills = kills;
+      return { e: energyFor(g), d: datosFor(g) };
+    };
+    const a = at(20, 5, 1500);
+    const b = at(38, 17, 4000);
+    expect(b.e).toBeGreaterThan(a.e * 2.5);
+    expect(b.d).toBeGreaterThan(a.d * 2.5);
+    expect(at(70, 5e4, 20000).e).toBeGreaterThan(2500);
+    expect(at(70, 5e4, 20000).d).toBeGreaterThan(600);
+  });
+
+  it('levels never hit a wall and XP bonuses add up', () => {
+    expect(xpNeed(130)).toBeLessThan(1000);
+    expect(xpNeed(300) / xpNeed(150)).toBeLessThan(4);
+    const g = newGame(2);
+    const codicia = PACT_CARDS.find((p) => p.id === 'pacto-codicia')!;
+    codicia.apply(g);
+    codicia.apply(g);
+    expect(g.g.xpMul).toBeCloseTo(2.2);
+    PACT_CARDS.find((p) => p.id === 'pacto-horda')!.apply(g);
+    expect(g.g.xpMul).toBeCloseTo(2.6);
+  });
+
+  it('a pact is offered at the end of every wave, never among the level-up cards', () => {
+    const g = newGame(3, 300, 400);
+    for (let k = 0; k < 200; k++) expect(offer(g, () => rand(g)).some((c) => c.kind === 'pact')).toBe(false);
+    let waves = 0;
+    for (let t = 0; t < 400 && waves < 3 && !g.over; t += 1 / 30) {
+      g.pending = 0;
+      update(g, 1 / 30);
+      if (g.pact) {
+        const o = offerPacts(g, () => rand(g));
+        expect(o).toHaveLength(3);
+        expect(new Set(o.map((c) => c.id)).size).toBe(3);
+        choosePact(g, o[0]);
+        expect(g.pact).toBe(false);
+        waves++;
+      }
+    }
+    expect(waves).toBe(3);
+    expect(g.taken.filter((t) => t.startsWith('pacto-'))).toHaveLength(3);
   });
 });

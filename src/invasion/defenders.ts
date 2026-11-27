@@ -57,6 +57,45 @@ export const DEF_INFO: Record<DefKind, DefInfo> = {
   // ── Chip Vacío ──
   singular: { chip: 'vacio', name: 'Singularidad', desc: 'Destierra al virus más duro de vuelta al borde de la pantalla.', color: '#9d7bff', base: () => stats({ dmg: 40, rate: 0.28, range: 300, count: 1 }) },
   eco: { chip: 'vacio', name: 'Eco', desc: 'Invierte el tiempo de un grupo: los virus caminan hacia atrás.', color: '#c48bff', base: () => stats({ dmg: 20, rate: 0.3, range: 230, splash: 70 }) },
+  // ── Anomalía · chip Marea ──
+  ola: { chip: 'marea', name: 'Ola', desc: 'Lanza una ola en abanico que golpea y arrastra a los virus hacia atrás.', color: '#4dc3ff', base: () => stats({ dmg: 30, rate: 0.5, range: 220, knock: 60, spread: 0.9 }) },
+  remolino: { chip: 'marea', name: 'Remolino', desc: 'Abre un remolino que hace girar a los virus en círculos mientras los ahoga.', color: '#6ee6ff', base: () => stats({ dmg: 26, rate: 0.3, range: 230, splash: 60 }) },
+  geiser: { chip: 'marea', name: 'Géiser', desc: 'Marca el suelo bajo un grupo: un instante después brota un géiser que los lanza por los aires.', color: '#bff3ff', base: () => stats({ dmg: 80, rate: 0.45, range: 250, splash: 42, count: 2 }) },
+  // ── Anomalía · chip Tesla ──
+  bobina: { chip: 'tesla', name: 'Bobina', desc: 'Acumula carga sin parar; cuando está llena, descarga en todos los virus cercanos a la vez.', color: '#ffe14d', base: () => stats({ dmg: 60, rate: 0.35, range: 230, count: 6 }) },
+  malla: { chip: 'tesla', name: 'Malla', desc: 'Une a dos virus con un hilo eléctrico: todo lo que cruza el hilo se electrocuta.', color: '#fff27a', base: () => stats({ dmg: 70, rate: 0.5, range: 240 }) },
+  pararrayos: { chip: 'tesla', name: 'Pararrayos', desc: 'Clava un pararrayos en el camino: le caen rayos que fríen todo a su alrededor.', color: '#d6f0ff', base: () => stats({ dmg: 34, rate: 0.22, range: 220, splash: 60 }) },
+  // ── Anomalía · chip Cripta ──
+  maldicion: { chip: 'cripta', name: 'Maldición', desc: 'Maldice a los virus: al morir estallan y dañan a los de alrededor con su propia vida.', color: '#b46bff', base: () => stats({ dmg: 20, rate: 0.8, range: 240, count: 3 }) },
+  espiritu: { chip: 'cripta', name: 'Espíritu', desc: 'Un espíritu posee al virus más fuerte: le roba la vida y repara el núcleo.', color: '#d9c2ff', base: () => stats({ dmg: 30, rate: 0.25, range: 280 }) },
+  lapida: { chip: 'cripta', name: 'Lápida', desc: 'Recoge las almas de los virus que mueren cerca y las dispara: cuantas más almas, más disparos.', color: '#8f7bb3', base: () => stats({ dmg: 22, rate: 0.7, range: 260, speed: 280, homing: 1 }) },
+  // ── Anomalía · chip Colmena ──
+  abeja: { chip: 'colmena', name: 'Abeja reina', desc: 'Suelta abejas que persiguen virus una y otra vez hasta que se cansan.', color: '#ffb020', base: () => stats({ dmg: 10, rate: 0.6, range: 260, count: 3, speed: 260, homing: 1, pierce: 3 }) },
+  telarana: { chip: 'colmena', name: 'Telaraña', desc: 'Teje una telaraña: los virus se quedan pegados y cada segundo dentro les duele más.', color: '#f2e6c9', base: () => stats({ dmg: 14, rate: 0.28, range: 230, splash: 55 }) },
+  mutageno: { chip: 'colmena', name: 'Mutágeno', desc: 'Muta a los virus: pierden blindaje y velocidad, reciben más daño y la mutación se contagia.', color: '#9cff3d', base: () => stats({ dmg: 18, rate: 0.6, range: 240, count: 2 }) },
+  // ── Tercer núcleo «Quásar» ──
+  pulsar: { chip: 'quasar', name: 'Púlsar', desc: 'Dos haces opuestos que giran sin parar alrededor, como un faro estelar.', color: '#ff6bf0', base: () => stats({ dmg: 40, rate: 1, range: 200, count: 2 }) },
+  graviton: { chip: 'quasar', name: 'Gravitón', desc: 'Gravedad inversa: empuja todo lo que se acerca y lo aplasta contra el vacío.', color: '#c78bff', base: () => stats({ dmg: 30, rate: 1, range: 120, knock: 50 }) },
+  supernova: { chip: 'quasar', name: 'Supernova', desc: 'Se carga durante unos segundos y estalla en una explosión enorme a su alrededor.', color: '#ffd27a', base: () => stats({ dmg: 260, rate: 0.18, range: 170 }) },
+  blanco: { chip: 'quasar', name: 'Agujero blanco', desc: 'Escupe proyectiles en espiral sin parar en todas direcciones.', color: '#f4f0ff', base: () => stats({ dmg: 14, rate: 9, range: 230, speed: 220 }) },
+  cometa: { chip: 'quasar', name: 'Cometa', desc: 'Lanza un cometa que cruza la pantalla y deja una estela de fuego por donde pasa.', color: '#7ad7ff', base: () => stats({ dmg: 110, rate: 0.3, range: 400, splash: 30, burn: 12 }) },
+  nebulosa: { chip: 'quasar', name: 'Nebulosa', desc: 'Una nube cósmica que desorienta a los virus: caminan perdidos mientras se deshacen.', color: '#ff8ad8', base: () => stats({ dmg: 22, rate: 0.2, range: 260, splash: 75 }) },
+  // ── Quásar · chip Reloj ──
+  pendulo: { chip: 'reloj', name: 'Péndulo', desc: 'Una cuchilla de péndulo que barre de lado a lado delante del chip.', color: '#7dffd8', base: () => stats({ dmg: 60, rate: 1, range: 150 }) },
+  arena: { chip: 'reloj', name: 'Arena del tiempo', desc: 'Arenas movedizas: cuanto más tiempo pasa un virus dentro, más daño recibe.', color: '#ffd9a0', base: () => stats({ dmg: 16, rate: 0.25, range: 240, splash: 65 }) },
+  retardo: { chip: 'reloj', name: 'Retardo', desc: 'Marca a un virus: todo el daño que recibe se repite segundo y medio después.', color: '#a0fff0', base: () => stats({ dmg: 10, rate: 0.7, range: 260, count: 2 }) },
+  // ── Quásar · chip Gema ──
+  lanza: { chip: 'gema', name: 'Lanza de cuarzo', desc: 'Una lanza que lo atraviesa todo y crece con cada virus que perfora.', color: '#c6a3ff', base: () => stats({ dmg: 50, rate: 0.55, range: 300, speed: 380, pierce: 99 }) },
+  geoda: { chip: 'gema', name: 'Geoda', desc: 'Levanta muros de cristal en el camino: frenan a los virus y estallan en esquirlas.', color: '#e0ccff', base: () => stats({ dmg: 60, rate: 0.2, range: 200, splash: 40 }) },
+  cristalizar: { chip: 'gema', name: 'Cristalizar', desc: 'Convierte a un virus en cristal: queda quieto y al golpearlo revienta en pedazos.', color: '#b3f0ff', base: () => stats({ dmg: 40, rate: 0.5, range: 250, splash: 50 }) },
+  // ── Quásar · chip Plasma ──
+  latigo: { chip: 'plasma', name: 'Látigo de plasma', desc: 'Un latigazo en arco que corta y quema a todo lo que tiene delante.', color: '#ff4d4d', base: () => stats({ dmg: 44, rate: 0.9, range: 120, burn: 6 }) },
+  sol: { chip: 'plasma', name: 'Sol', desc: 'Un pequeño sol orbita alrededor y quema lo que toca; de vez en cuando lanza una llamarada.', color: '#ffb347', base: () => stats({ dmg: 50, rate: 1, range: 60, burn: 10 }) },
+  erupcion: { chip: 'plasma', name: 'Erupción', desc: 'Hace brotar lava bajo los grupos de virus: arde y deja el suelo al rojo.', color: '#ff6a3d', base: () => stats({ dmg: 30, rate: 0.3, range: 250, splash: 50, burn: 14 }) },
+  // ── Quásar · chip Resonancia ──
+  diapason: { chip: 'resonancia', name: 'Diapasón', desc: 'Una nota en línea recta: cuantos más virus atraviesa, más fuerte suena.', color: '#9effa1', base: () => stats({ dmg: 36, rate: 0.7, range: 300 }) },
+  bajo: { chip: 'resonancia', name: 'Bajo', desc: 'Un golpe grave que aturde a todo lo que hay alrededor.', color: '#5dff8f', base: () => stats({ dmg: 30, rate: 0.35, range: 150 }) },
+  silencio: { chip: 'resonancia', name: 'Silencio', desc: 'Silencia a los virus: pierden escudo y blindaje para siempre y no pueden usar sus trucos.', color: '#e8ffe0', base: () => stats({ dmg: 16, rate: 0.4, range: 250, splash: 70 }) },
   segador: { chip: 'vacio', name: 'Segador', desc: 'Una guadaña que siega a los virus debilitados y se hace más fuerte con cada uno.', color: '#e0c3ff', base: () => stats({ dmg: 45, rate: 0.6, range: 150, execute: 0.18 }) },
 };
 // ── Elements: every defender and every virus has one ─────────────────────
@@ -77,6 +116,9 @@ export const DEF_EL: Record<DefKind, Element> = {
   francotirador: 'luz', llamas: 'fuego', gravedad: 'vacio', drones: 'electrico', acido: 'bio', bumeran: 'metal', minas: 'electrico', cronos: 'tiempo',
   rastreador: 'luz', senuelo: 'electrico', iman: 'metal', clonador: 'tiempo', burbuja: 'hielo', hacker: 'electrico', fractal: 'luz', eclipse: 'vacio',
   refractor: 'luz', espejo: 'luz', foton: 'luz', martillo: 'metal', crisol: 'fuego', forjador: 'metal', nanobots: 'bio', espora: 'bio', raiz: 'bio', singular: 'vacio', eco: 'tiempo', segador: 'vacio',
+  ola: 'hielo', remolino: 'hielo', geiser: 'fuego', bobina: 'electrico', malla: 'electrico', pararrayos: 'electrico', maldicion: 'vacio', espiritu: 'vacio', lapida: 'tiempo', abeja: 'bio', telarana: 'bio', mutageno: 'bio',
+  pulsar: 'luz', graviton: 'vacio', supernova: 'fuego', blanco: 'luz', cometa: 'hielo', nebulosa: 'tiempo',
+  pendulo: 'metal', arena: 'tiempo', retardo: 'tiempo', lanza: 'metal', geoda: 'metal', cristalizar: 'hielo', latigo: 'fuego', sol: 'fuego', erupcion: 'fuego', diapason: 'electrico', bajo: 'metal', silencio: 'luz',
 };
 /** ×1.6 super effective, ×0.6 not very effective. */
 export function effectiveness(att: Element | undefined, def: Element | undefined): number {
@@ -124,6 +166,36 @@ export const ULTS: Record<DefKind, { name: string; desc: string; fx: UltFx }> = 
   hacker: { name: 'Ejército', desc: 'Hackea a cinco virus.', fx: 'army' },
   fractal: { name: 'Fractal infinito', desc: 'Una lluvia de disparos que no para de dividirse.', fx: 'fractalstorm' },
   eclipse: { name: 'Eclipse total', desc: 'Oscurece todo el tablero y lo drena.', fx: 'blackout' },
+  ola: { name: 'Tsunami', desc: 'Una ola gigante que lo aparta todo.', fx: 'quake' },
+  remolino: { name: 'Maelstrom', desc: 'Un remolino enorme en mitad del tablero.', fx: 'hole' },
+  geiser: { name: 'Campo de géiseres', desc: 'Doce géiseres por toda la zona.', fx: 'artillery' },
+  bobina: { name: 'Sobretensión', desc: 'Diez rayos caen sobre los virus.', fx: 'storm' },
+  malla: { name: 'Parálisis', desc: 'Todos los virus se quedan quietos 2 s.', fx: 'stop' },
+  pararrayos: { name: 'Tormenta perfecta', desc: 'Rayos sobre todo el tablero.', fx: 'storm' },
+  maldicion: { name: 'Condena', desc: 'Todos los virus quedan vulnerables.', fx: 'expose' },
+  espiritu: { name: 'Legión', desc: 'Posee a cinco virus que luchan por ti.', fx: 'army' },
+  lapida: { name: 'Ánimas', desc: 'Una andanada de almas en todas direcciones.', fx: 'barrage' },
+  abeja: { name: 'Enjambre furioso', desc: 'La colmena trabaja al doble durante 8 s.', fx: 'swarm' },
+  telarana: { name: 'Gran telaraña', desc: 'Atrapa a todo lo cercano 3 s.', fx: 'jungle' },
+  mutageno: { name: 'Mutación masiva', desc: 'Infecta a diez virus.', fx: 'pandemic' },
+  pulsar: { name: 'Faro estelar', desc: 'Un haz gigante que barre la pantalla.', fx: 'beam' },
+  graviton: { name: 'Onda gravitatoria', desc: 'Una onda enorme que lo aparta todo.', fx: 'quake' },
+  supernova: { name: 'Hipernova', desc: 'Un anillo de fuego que lo quema todo.', fx: 'inferno' },
+  blanco: { name: 'Big Bang', desc: 'Una lluvia de fragmentos de todos los elementos.', fx: 'rainbow' },
+  cometa: { name: 'Lluvia de cometas', desc: 'Ocho cometas sobre los grupos.', fx: 'meteors' },
+  nebulosa: { name: 'Nube cósmica', desc: 'Oscurece todo el tablero y lo drena.', fx: 'blackout' },
+  pendulo: { name: 'Péndulo eterno', desc: 'Barre al triple de velocidad durante 6 s.', fx: 'whirl' },
+  arena: { name: 'Desierto', desc: 'Arenas sobre cinco grupos de virus.', fx: 'flood' },
+  retardo: { name: 'Eco del tiempo', desc: 'Todos los virus se paran 2 s.', fx: 'stop' },
+  lanza: { name: 'Lanzas de cuarzo', desc: 'Lanzas en todas direcciones.', fx: 'barrage' },
+  geoda: { name: 'Fortaleza', desc: 'Repara mucho el núcleo y da 2 escudos.', fx: 'armor' },
+  cristalizar: { name: 'Edad de cristal', desc: 'Congela todo lo cercano 3 s.', fx: 'freeze' },
+  latigo: { name: 'Latigazo solar', desc: 'Todo lo cercano sale despedido.', fx: 'mirrors' },
+  sol: { name: 'Corona solar', desc: 'Un anillo de fuego que lo quema todo.', fx: 'inferno' },
+  erupcion: { name: 'Volcán', desc: 'Lava sobre cinco grupos de virus.', fx: 'flood' },
+  diapason: { name: 'Nota final', desc: 'Un haz de sonido que barre la pantalla.', fx: 'beam' },
+  bajo: { name: 'Terremoto sónico', desc: 'Una onda enorme que lo aparta todo.', fx: 'quake' },
+  silencio: { name: 'Silencio absoluto', desc: 'Todos los virus quedan vulnerables.', fx: 'expose' },
 };
 export const ULT_TIME = 16;
 
@@ -131,26 +203,70 @@ export const ULT_TIME = 16;
 export const behOf = (k: DefKind): DefKind => DEF_INFO[k].beh ?? k;
 
 // ── Extra chips: outposts around the main one ──────────────────────────────
-export type ChipId = 'prisma' | 'forja' | 'bio' | 'vacio' | 'anomalia';
-export const CHIPS: { id: ChipId; name: string; color: string; ability: string; kinds: DefKind[] }[] = [
-  { id: 'prisma', name: 'Prisma', color: '#7df9ff', ability: 'Dispara haces de luz que se reparten entre los virus más cercanos.', kinds: ['refractor', 'espejo', 'foton'] },
-  { id: 'forja', name: 'Forja', color: '#ff9a3d', ability: 'Hace caer meteoritos ardientes sobre los virus.', kinds: ['martillo', 'crisol', 'forjador'] },
-  { id: 'bio', name: 'Bio', color: '#5dffa8', ability: 'Repara el núcleo y siembra nubes tóxicas.', kinds: ['nanobots', 'espora', 'raiz'] },
-  { id: 'vacio', name: 'Vacío', color: '#9d7bff', ability: 'Un vórtice permanente atrae y tritura a los virus que pasan.', kinds: ['singular', 'eco', 'segador'] },
-  { id: 'anomalia', name: 'Anomalía', color: '#ff5f8f', ability: 'Un segundo núcleo principal: un rayo une los dos núcleos y fulmina lo que lo cruza.', kinds: ['iman', 'clonador', 'burbuja', 'hacker', 'fractal', 'eclipse'] },
+export type ChipId = 'prisma' | 'forja' | 'bio' | 'vacio' | 'anomalia' | 'marea' | 'tesla' | 'cripta' | 'colmena' | 'quasar' | 'reloj' | 'gema' | 'plasma' | 'resonancia';
+export interface ChipDef {
+  id: ChipId;
+  name: string;
+  color: string;
+  ability: string;
+  kinds: DefKind[];
+  /** Which main core it belongs to (0 = the central one). */
+  core: number;
+  /** A main core (six defenders) instead of an outpost (three). */
+  main?: boolean;
+  /** Joint evolution of an outpost at level 10. */
+  form?: { name: string; desc: string };
+}
+/**
+ * Unlock order: the four outposts of the central core, then the second main
+ * core and its four outposts, then the third main core and its four. Never more.
+ */
+export const CHIPS: ChipDef[] = [
+  { id: 'prisma', core: 0, name: 'Prisma', color: '#7df9ff', ability: 'Dispara haces de luz que se reparten entre los virus más cercanos.', kinds: ['refractor', 'espejo', 'foton'], form: { name: 'Catedral de luz', desc: 'Sus haces se duplican y todo lo que tocan queda deslumbrado.' } },
+  { id: 'forja', core: 0, name: 'Forja', color: '#ff9a3d', ability: 'Hace caer meteoritos ardientes sobre los virus.', kinds: ['martillo', 'crisol', 'forjador'], form: { name: 'Gran Fundición', desc: 'Lluvia doble de meteoritos al rojo vivo.' } },
+  { id: 'bio', core: 0, name: 'Bio', color: '#5dffa8', ability: 'Repara el núcleo y siembra nubes tóxicas.', kinds: ['nanobots', 'espora', 'raiz'], form: { name: 'Árbol de la vida', desc: 'Repara el doble y sus nubes son el doble de tóxicas.' } },
+  { id: 'vacio', core: 0, name: 'Vacío', color: '#9d7bff', ability: 'Un vórtice permanente atrae y tritura a los virus que pasan.', kinds: ['singular', 'eco', 'segador'], form: { name: 'Abismo', desc: 'El vórtice crece y tritura el doble.' } },
+  { id: 'anomalia', core: 1, main: true, name: 'Anomalía', color: '#ff5f8f', ability: 'Un segundo núcleo principal: un rayo une los dos núcleos y fulmina lo que lo cruza.', kinds: ['iman', 'clonador', 'burbuja', 'hacker', 'fractal', 'eclipse'] },
+  { id: 'marea', core: 1, name: 'Marea', color: '#4dc3ff', ability: 'Cada poco suelta una onda de agua helada que frena a todo lo cercano.', kinds: ['ola', 'remolino', 'geiser'], form: { name: 'Océano', desc: 'Sus ondas son enormes y congelan casi del todo.' } },
+  { id: 'tesla', core: 1, name: 'Tesla', color: '#ffe14d', ability: 'Lanza un rayo encadenado que salta entre cinco virus.', kinds: ['bobina', 'malla', 'pararrayos'], form: { name: 'Torre Tesla', desc: 'Sus rayos saltan entre diez virus y hacen el doble.' } },
+  { id: 'cripta', core: 1, name: 'Cripta', color: '#b46bff', ability: 'Drena la vida de los virus cercanos para reparar el núcleo.', kinds: ['maldicion', 'espiritu', 'lapida'], form: { name: 'Necrópolis', desc: 'Drena a seis virus a la vez y repara el triple.' } },
+  { id: 'colmena', core: 1, name: 'Colmena', color: '#ffb020', ability: 'Suelta un enjambre de avispas que persiguen a los virus.', kinds: ['abeja', 'telarana', 'mutageno'], form: { name: 'Reina madre', desc: 'Enjambres el doble de grandes y venenosos.' } },
+  { id: 'quasar', core: 2, main: true, name: 'Quásar', color: '#ff6bf0', ability: 'El tercer núcleo: los tres núcleos se unen en un triángulo de energía que lo fulmina todo.', kinds: ['pulsar', 'graviton', 'supernova', 'blanco', 'cometa', 'nebulosa'] },
+  { id: 'reloj', core: 2, name: 'Reloj', color: '#7dffd8', ability: 'Detiene el tiempo alrededor del chip cada pocos segundos.', kinds: ['pendulo', 'arena', 'retardo'], form: { name: 'Cronosfera', desc: 'Detiene el tiempo más lejos y durante más rato.' } },
+  { id: 'gema', core: 2, name: 'Gema', color: '#c6a3ff', ability: 'Dispara esquirlas de cristal en todas direcciones.', kinds: ['lanza', 'geoda', 'cristalizar'], form: { name: 'Diamante', desc: 'El doble de esquirlas y lo atraviesan todo.' } },
+  { id: 'plasma', core: 2, name: 'Plasma', color: '#ff4d4d', ability: 'Una llamarada quema a todos los virus cercanos.', kinds: ['latigo', 'sol', 'erupcion'], form: { name: 'Estrella', desc: 'Llamaradas el doble de grandes y que queman más.' } },
+  { id: 'resonancia', core: 2, name: 'Resonancia', color: '#9effa1', ability: 'Un pulso sónico golpea y aparta a lo que se acerca.', kinds: ['diapason', 'bajo', 'silencio'], form: { name: 'Sinfonía', desc: 'Pulsos que aturden y hacen el doble.' } },
 ];
-/** Index of the second main chip. */
+/** Index of the second and third main chips. */
 export const TWIN = 5;
+export const TRIAD = 10;
+export const MAIN_CHIPS = [0, TWIN, TRIAD];
 export const MAX_CHIPS = 1 + CHIPS.length;
-/** Chip upgrade levels (all three defenders at once). */
+/** Chip upgrade levels (all its defenders at once). */
 export const CHIP_MAX_LVL = 10;
 /** Defenders per extra chip. */
 export const CHIP_SLOTS = 3;
-export const chipSlots = (k: number) => (k === TWIN ? 6 : CHIP_SLOTS);
+export const isMainChip = (k: number) => k === 0 || !!CHIPS[k - 1]?.main;
+export const chipSlots = (k: number) => (isMainChip(k) ? 6 : CHIP_SLOTS);
+/** Main core a chip belongs to (0, 1, 2). */
+export const coreOf = (k: number) => (k === 0 ? 0 : CHIPS[k - 1].core);
+/** The four outposts of a main core. */
+export const outpostsOf = (core: number) => CHIPS.map((c, i) => ({ c, k: i + 1 })).filter((x) => x.c.core === core && !x.c.main).map((x) => x.k);
+/** Radius of the ring of defenders around chip k. */
+export const chipRingR = (k: number) => (k === 0 ? 64 : isMainChip(k) ? 48 : 36);
 export const CHIP_D = 235;
-/** Where chip k (1-4) sits: above, below, left, right of the main one. */
+const D2 = 85;
+const POS: { x: number; y: number }[] = [
+  { x: 0, y: 0 },
+  { x: 0, y: -CHIP_D }, { x: 0, y: CHIP_D }, { x: -CHIP_D, y: 0 }, { x: CHIP_D, y: 0 },
+  // Second core (top right) and its outposts on the diagonals around it
+  { x: CHIP_D, y: -CHIP_D }, { x: CHIP_D - D2, y: -CHIP_D - D2 }, { x: CHIP_D + D2, y: -CHIP_D - D2 }, { x: CHIP_D + D2, y: -CHIP_D + D2 }, { x: CHIP_D - D2, y: -CHIP_D + D2 },
+  // Third core (bottom left)
+  { x: -CHIP_D, y: CHIP_D }, { x: -CHIP_D + D2, y: CHIP_D + D2 }, { x: -CHIP_D - D2, y: CHIP_D + D2 }, { x: -CHIP_D - D2, y: CHIP_D - D2 }, { x: -CHIP_D + D2, y: CHIP_D - D2 },
+];
+/** Where chip k sits. */
 export function chipPos(k: number): { x: number; y: number } {
-  return [{ x: 0, y: 0 }, { x: 0, y: -CHIP_D }, { x: 0, y: CHIP_D }, { x: -CHIP_D, y: 0 }, { x: CHIP_D, y: 0 }, { x: CHIP_D * 0.78, y: -CHIP_D * 0.78 }][k] ?? { x: 0, y: 0 };
+  return POS[k] ?? POS[0];
 }
 export const chipOfKind = (k: DefKind): number => {
   const c = DEF_INFO[k].chip;

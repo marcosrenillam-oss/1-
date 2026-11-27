@@ -8,7 +8,12 @@ export type DefKind =
   // New main-chip defenders (Laboratorio)
   | 'rastreador' | 'senuelo'
   // The second main chip («Anomalía»)
-  | 'iman' | 'clonador' | 'burbuja' | 'hacker' | 'fractal' | 'eclipse';
+  | 'iman' | 'clonador' | 'burbuja' | 'hacker' | 'fractal' | 'eclipse'
+  // Anomalía's outposts
+  | 'ola' | 'remolino' | 'geiser' | 'bobina' | 'malla' | 'pararrayos' | 'maldicion' | 'espiritu' | 'lapida' | 'abeja' | 'telarana' | 'mutageno'
+  // The third main chip («Quásar») and its outposts
+  | 'pulsar' | 'graviton' | 'supernova' | 'blanco' | 'cometa' | 'nebulosa'
+  | 'pendulo' | 'arena' | 'retardo' | 'lanza' | 'geoda' | 'cristalizar' | 'latigo' | 'sol' | 'erupcion' | 'diapason' | 'bajo' | 'silencio';
 
 export interface Stats {
   dmg: number;
@@ -82,6 +87,17 @@ export type VirusType =
   | 'coloso' | 'reina' | 'espectro' | 'acorazado' | 'hidra' | 'titan';
 
 export interface Virus {
+  /** Expansion statuses: curse (damage on death), mutation, echo mark (+queue), crystal, confusion, silence, time in web/sand. */
+  curse?: number;
+  mut?: number;
+  echo?: number;
+  echoQ?: { t: number; d: number }[];
+  crystal?: number;
+  crystalDmg?: number;
+  confuse?: number;
+  silence?: number;
+  webT?: number;
+  sandT?: number;
   id: number;
   type: VirusType;
   x: number;
@@ -136,6 +152,8 @@ export interface Virus {
 }
 
 export interface Shot {
+  /** Quartz lance: grows with every virus it pierces. */
+  grow?: boolean;
   x: number;
   y: number;
   vx: number;
@@ -194,7 +212,9 @@ export type Fx =
 
 /** Ground effects: acid puddles, gravity wells, mines. */
 export interface Zone {
-  k: 'acid' | 'well' | 'mine' | 'plant' | 'decoy' | 'eclipse';
+  k: 'acid' | 'well' | 'mine' | 'plant' | 'decoy' | 'eclipse' | 'x';
+  /** Expansion zone type (k === 'x'). */
+  ek?: string;
   x: number;
   y: number;
   r: number;
@@ -215,8 +235,11 @@ export interface Globals {
   rateMul: number;
   rangeMul: number;
   critAdd: number;
+  /** 1 + the sum of every XP bonus taken (bonuses add up). */
   xpMul: number;
   energyMul: number;
+  /** Pacts: multiplies energy and datos at the end. */
+  lootMul?: number;
   regen: number;
   shieldMax: number;
   shield: number;
@@ -304,6 +327,8 @@ export interface Game {
   synAdj: string[];
   /** Wave modifier of the current wave (apagón, tormenta…). */
   mod?: string;
+  /** A pact is waiting to be chosen (end of a wave). */
+  pact?: boolean;
   /** Slow motion time left (epic moments). */
   slowmo: number;
   /** Chips in play (1-6): the main one, outposts around it and a second main chip. */

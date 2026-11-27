@@ -242,9 +242,43 @@ await settle(900);
 await page.getByRole('button', { name: /Continuar · oleada/ }).click();
 await settle(2500);
 check(await page.locator('.inv-hud').isVisible(), 'invasion: resumed');
+// A pact may be waiting at the end of the wave.
+for (let k = 0; k < 3 && (await page.locator('.inv-card').count()); k++) {
+  await page.locator('.inv-card').first().click();
+  await page.waitForTimeout(200);
+}
 await page.getByRole('button', { name: 'Pausa' }).click();
-await settle(400);
-check(await page.locator('.inv-build li').count() >= 2, 'invasion: pause shows your defenders');
+await settle(1200);
+check(await page.locator('.inv-pausev').isVisible(), 'invasion: pause zooms onto the chip with side panels');
+await shot('10d-invasion-pause');
+{
+  // Drag the first ring defender onto the second: they swap.
+  const pos = await page.evaluate(() => {
+    const g = window.__inv.current;
+    const v = window.__invView.current;
+    const r = document.querySelector('.inv-canvas').getBoundingClientRect();
+    const ring = g.defenders.filter((d) => !d.chip);
+    return ring.slice(0, 2).map((d) => ({ id: d.id, x: r.left + v.w / 2 + d.x * v.scale, y: r.top + v.h / 2 + d.y * v.scale }));
+  });
+  if (pos.length === 2) {
+    await page.mouse.move(pos[0].x, pos[0].y);
+    await page.mouse.down();
+    await page.mouse.move((pos[0].x + pos[1].x) / 2, (pos[0].y + pos[1].y) / 2, { steps: 4 });
+    const p1 = await page.evaluate((id) => {
+      const g = window.__inv.current;
+      const v = window.__invView.current;
+      const r = document.querySelector('.inv-canvas').getBoundingClientRect();
+      const d = g.defenders.find((x) => x.id === id);
+      return { x: r.left + v.w / 2 + d.x * v.scale, y: r.top + v.h / 2 + d.y * v.scale };
+    }, pos[1].id);
+    await page.mouse.move(p1.x, p1.y, { steps: 4 });
+    await page.mouse.up();
+    await settle(300);
+    const order = await page.evaluate(() => window.__inv.current.defenders.filter((d) => !d.chip).slice(0, 2).map((d) => d.id));
+    check(order[0] === pos[1].id && order[1] === pos[0].id, 'invasion: in pause, dragging a defender onto another swaps them');
+    check(await page.locator('.inv-pausev-pick').isVisible(), 'invasion: the picked defender shows its neighbours');
+  }
+}
 await page.getByRole('button', { name: 'Terminar partida' }).click();
 await settle(2600);
 check(await page.getByRole('button', { name: 'Otra vez' }).isVisible(), 'invasion: end screen');

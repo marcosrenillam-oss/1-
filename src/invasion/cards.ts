@@ -1,9 +1,9 @@
-import { behOf, CHIP_MAX_LVL, CHIP_SLOTS, chipSlots, CHIPS, TWIN, chipOfKind, DEF_EL, DEF_INFO, DEF_KINDS, defenderName, ELEMENTS, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
+import { behOf, chipPos, CHIP_MAX_LVL, CHIP_SLOTS, chipSlots, CHIPS, chipOfKind, isMainChip, outpostsOf, DEF_EL, DEF_INFO, DEF_KINDS, defenderName, ELEMENTS, EVOS, evoOptions, fusionName, makeDefender, MAX_CHIPS, SYNERGIES, ULTS } from './defenders';
 import type { DefKind, Defender, Game, Stats } from './types';
 
 export const MAX_DEFENDERS = 10;
 
-export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip' | 'chipup' | 'coreevo';
+export type CardKind = 'new' | 'stat' | 'global' | 'pact' | 'evo' | 'fusion' | 'asc' | 'chip' | 'chipup' | 'coreevo' | 'chipevo';
 export type Rarity = 'comun' | 'rara' | 'epica' | 'legendaria';
 export const RARITY_LABEL: Record<Rarity, string> = { comun: 'Común', rara: 'Rara', epica: 'Épica', legendaria: 'Legendaria' };
 export interface Card {
@@ -149,39 +149,72 @@ export const GLOBAL_CARDS: GlobalDef[] = [
   { id: 'purga', title: 'Protocolo de purga', max: 3, next: () => 'Todos rematan virus por debajo de un 6 % más', desc: '', apply: (g) => { g.g.execute += 0.06; } },
   { id: 'cazajefes', title: 'Antivirus de élite', max: 5, next: () => '+30 % de daño a jefes y élites', desc: '', apply: (g) => { g.g.bossMul *= 1.3; } },
   { id: 'primer-golpe', title: 'Primer impacto', max: 4, next: () => '+40 % de daño a virus intactos', desc: '', apply: (g) => { g.g.firstHit += 0.4; } },
-  { id: 'reaccion', title: 'Reacción en cadena', max: 5, next: () => 'Los virus explotan al morir (más fuerte)', desc: '', apply: (g) => { g.g.chainReaction += 0.2; } },
+  { id: 'reaccion', title: 'Reacción en cadena', max: 5, next: () => 'Los virus explotan al morir (más fuerte)', desc: '', apply: (g) => { g.g.chainReaction += 0.07; } },
   { id: 'criogenia', title: 'Criogenia', max: 5, next: () => 'Todos los golpes frenan un 8 % más', desc: '', apply: (g) => { g.g.hitSlow += 0.08; } },
   { id: 'incendio', title: 'Incendio', max: 6, next: () => 'Todos los golpes queman 2/s más', desc: '', apply: (g) => { g.g.hitBurn += 2; } },
   // ── Rewards and choices ──
-  { id: 'aprendizaje', title: 'Aprendizaje', max: 6, next: () => '+20 % de experiencia', desc: '', apply: (g) => { g.g.xpMul *= 1.2; } },
+  { id: 'aprendizaje', title: 'Aprendizaje', max: 6, next: () => '+20 % de experiencia', desc: '', apply: (g) => { g.g.xpMul += 0.2; } },
   { id: 'botin', title: 'Botín', max: 5, next: () => '+25 % de energía para tu chip al acabar', desc: '', apply: (g) => { g.g.energyMul += 0.25; }, w: 0.7 },
   { id: 'recalcular', title: 'Recalcular', max: 5, next: () => '+2 cambios de cartas', desc: '', apply: (g) => { g.g.rerolls += 2; }, w: 0.6 },
   { id: 'eleccion', title: 'Más opciones', max: 1, next: () => 'A partir de ahora eliges entre 4 cartas', desc: '', ok: (g) => g.g.choices < 4, apply: (g) => { g.g.choices = 4; }, w: 0.5 },
 ];
 export const wallHp = (lvl: number) => (lvl <= 0 ? 0 : 60 + 60 * lvl + (lvl >= 6 ? 20 : 0) + (lvl >= 8 ? 60 : 0));
 
-// ── Pacts: power with a price ──────────────────────────────────────────────
+// ── Pacts: power with a price. One is offered at the end of every wave,
+// apart from the level-up cards. They can repeat and they stack: two «Codicia»
+// are +120 % de experiencia.
+const hpCost = (g: Game, n: number) => {
+  g.maxHp -= n;
+  g.hp = Math.min(g.hp, g.maxHp);
+};
 export const PACT_CARDS: GlobalDef[] = [
-  { id: 'pacto-poder', title: 'Pacto de poder', desc: '+35 % de daño · los virus +30 % de vida.', apply: (g) => { g.g.dmgMul *= 1.35; g.g.enemyHp *= 1.3; } },
-  { id: 'pacto-veloz', title: 'Pacto veloz', desc: '+30 % de cadencia · los virus +20 % de velocidad.', ok: (g) => g.g.enemySpeed < 1.8, apply: (g) => { g.g.rateMul *= 1.3; g.g.enemySpeed *= 1.2; } },
-  { id: 'pacto-codicia', title: 'Codicia', desc: '+60 % de experiencia · +1 jefe por oleada de jefe.', apply: (g) => { g.g.xpMul *= 1.6; g.g.extraBoss += 1; } },
-  { id: 'pacto-cristal', title: 'Núcleo de cristal', desc: '+50 % de daño · integridad máxima −30.', ok: (g) => g.maxHp > 50, apply: (g) => { g.g.dmgMul *= 1.5; g.maxHp -= 30; g.hp = Math.min(g.hp, g.maxHp); } },
-  { id: 'pacto-horda', title: 'Horda', desc: '+30 % de experiencia y +50 % de energía · 40 % más virus.', apply: (g) => { g.g.xpMul *= 1.3; g.g.energyMul += 0.5; g.g.horde *= 1.4; } },
-  { id: 'pacto-riesgo', title: 'Todo o nada', desc: 'Crítico +20 % y daño crítico ×2 · integridad −25.', ok: (g) => g.maxHp > 45, apply: (g) => { g.g.critAdd += 0.2; g.defenders.forEach((d) => { d.stats.critMult *= 2; if (d.fuse) d.fuse.stats.critMult *= 2; }); g.maxHp -= 25; g.hp = Math.min(g.hp, g.maxHp); } },
+  { id: 'pacto-poder', title: 'Pacto de poder', desc: '+25 % de daño · los virus +20 % de vida.', apply: (g) => { g.g.dmgMul += 0.25; g.g.enemyHp *= 1.2; } },
+  { id: 'pacto-veloz', title: 'Pacto veloz', desc: '+20 % de cadencia · los virus +12 % de velocidad.', ok: (g) => g.g.enemySpeed < 1.8, apply: (g) => { g.g.rateMul += 0.2; g.g.enemySpeed *= 1.12; } },
+  { id: 'pacto-codicia', title: 'Codicia', desc: '+60 % de experiencia · +1 jefe en cada oleada de jefe.', ok: (g) => g.g.extraBoss < 4, apply: (g) => { g.g.xpMul += 0.6; g.g.extraBoss += 1; } },
+  { id: 'pacto-cristal', title: 'Núcleo de cristal', desc: '+40 % de daño · integridad máxima −20.', ok: (g) => g.maxHp > 60, apply: (g) => { g.g.dmgMul += 0.4; hpCost(g, 20); } },
+  { id: 'pacto-horda', title: 'Horda', desc: '+40 % de experiencia y +50 % de energía · 25 % más virus.', ok: (g) => g.g.horde < 3, apply: (g) => { g.g.xpMul += 0.4; g.g.energyMul = Math.min(3, g.g.energyMul + 0.5); g.g.horde *= 1.25; } },
+  { id: 'pacto-riesgo', title: 'Todo o nada', desc: 'Crítico +10 % y daño crítico ×1,5 · integridad −15.', ok: (g) => g.maxHp > 60, apply: (g) => { g.g.critAdd += 0.1; g.defenders.forEach((d) => { d.stats.critMult *= 1.5; if (d.fuse) d.fuse.stats.critMult *= 1.5; }); hpCost(g, 15); } },
   { id: 'pacto-jefe', title: 'Llamar al jefe', desc: 'La próxima oleada trae un jefe · al vencerlo, 2 mejoras extra.', ok: (g) => !g.g.bossNext, apply: (g) => { g.g.bossNext = 1; g.g.bossBounty += 2; } },
-  { id: 'pacto-sacrificio', title: 'Sacrificio', desc: 'Pierdes tu defensor más débil · los demás +40 % de daño.', ok: (g) => g.defenders.length >= 3, apply: (g) => {
-    const weakest = [...g.defenders].sort((a, b) => a.lvl + a.evo.length * 3 - (b.lvl + b.evo.length * 3))[0];
+  { id: 'pacto-sacrificio', title: 'Sacrificio', desc: 'Pierdes tu defensor más débil del anillo · los demás +40 % de daño.', ok: (g) => mainRing(g).length >= 5, apply: (g) => {
+    const weakest = [...mainRing(g)].sort((a, b) => a.lvl + a.evo.length * 3 - (b.lvl + b.evo.length * 3))[0];
     g.defenders = g.defenders.filter((d) => d !== weakest);
     g.defenders.forEach((d) => { d.stats.dmg *= 1.4; if (d.fuse) d.fuse.stats.dmg *= 1.4; });
     refreshSynergies(g);
   } },
-  { id: 'pacto-prisa', title: 'Hora punta', desc: '+40 % de experiencia · las oleadas llegan más rápido.', ok: (g) => g.g.waveSpeed < 2, apply: (g) => { g.g.xpMul *= 1.4; g.g.waveSpeed *= 1.3; } },
-  { id: 'pacto-elite', title: 'Élites', desc: 'Aparecen virus élite (vida ×3) que dan el triple de experiencia.', ok: (g) => g.g.eliteChance < 0.4, apply: (g) => { g.g.eliteChance += 0.12; } },
+  { id: 'pacto-prisa', title: 'Hora punta', desc: '+40 % de experiencia · las oleadas llegan más rápido.', ok: (g) => g.g.waveSpeed < 2, apply: (g) => { g.g.xpMul += 0.4; g.g.waveSpeed *= 1.15; } },
+  { id: 'pacto-elite', title: 'Élites', desc: '+20 % de experiencia · más virus élite (vida ×3, experiencia ×3).', ok: (g) => g.g.eliteChance < 0.5, apply: (g) => { g.g.xpMul += 0.2; g.g.eliteChance += 0.1; } },
+  { id: 'pacto-avaricia', title: 'Avaricia', desc: '+35 % de energía y datos al terminar · los virus +15 % de vida.', ok: (g) => (g.g.lootMul ?? 1) < 2.4, apply: (g) => { g.g.lootMul = (g.g.lootMul ?? 1) + 0.35; g.g.enemyHp *= 1.15; } },
+  { id: 'pacto-ofrenda', title: 'Ofrenda', desc: '+2 mejoras ahora mismo · los virus +25 % de vida.', apply: (g) => { g.pending += 2; g.g.enemyHp *= 1.25; } },
+  { id: 'pacto-estudio', title: 'Estudio', desc: '+30 % de experiencia · −8 % de daño.', apply: (g) => { g.g.xpMul += 0.3; g.g.dmgMul = Math.max(0.5, g.g.dmgMul - 0.08); } },
+  { id: 'pacto-escudo', title: 'Escudo prestado', desc: '+1 escudo máximo · los virus +10 % de velocidad.', ok: (g) => g.g.enemySpeed < 1.8 && g.g.shieldMax < 6, apply: (g) => { g.g.shieldMax += 1; g.g.shield += 1; g.g.enemySpeed *= 1.1; } },
+  { id: 'pacto-vista', title: 'Ojo de halcón', desc: '+15 % de alcance · los virus +15 % de vida.', ok: (g) => g.g.rangeMul < 2, apply: (g) => { g.g.rangeMul += 0.15; g.g.enemyHp *= 1.15; } },
+  { id: 'pacto-sangre', title: 'Pacto de sangre', desc: 'El núcleo se repara +1/s · integridad máxima −10.', ok: (g) => g.maxHp > 60, apply: (g) => { g.g.regen += 1; hpCost(g, 10); } },
 ];
+export const pactCount = (g: Game) => g.taken.filter((t) => t.startsWith('pacto-')).length;
+
+/** Three different pacts to choose from at the end of a wave. */
+export function offerPacts(g: Game, rnd: () => number): Card[] {
+  const pool = PACT_CARDS.filter((p) => !p.ok || p.ok(g));
+  const out: Card[] = [];
+  while (out.length < 3 && pool.length) {
+    const p = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+    const n = levelOf(g, p.id);
+    out.push({ key: p.id, id: p.id, kind: 'pact', rarity: 'epica', title: p.title, desc: p.desc, tag: n ? `Pacto · ya tienes ${n}` : 'Pacto', color: '#ff3b3b', apply: (gg) => p.apply(gg) });
+  }
+  return out;
+}
+export function choosePact(g: Game, c: Card) {
+  c.apply(g);
+  g.taken.push(c.id);
+  g.pact = false;
+  g.events.push('pact');
+  g.fx.push({ k: 'ring', x: 0, y: 0, r0: 10, r1: 120, life: 0.7, max: 0.7, c: '#ff3b3b', w: 4 });
+  g.fx.push({ k: 'txt', x: 0, y: -40, s: c.title, life: 1.4, max: 1.4, c: '#ff5a5a' });
+}
 
 /** Distinct upgrades in the game (fusions counted once per pair of types). */
 export const FUSION_PAIRS = (DEF_KINDS.length * (DEF_KINDS.length - 1)) / 2;
-export const CATALOGUE_SIZE = CHIPS.reduce((a, c) => a + 1 + c.kinds.length, 0) + 2 + 0 * CHIP_SLOTS + DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
+export const CATALOGUE_SIZE = CHIPS.reduce((a, c) => a + 1 + c.kinds.length + (c.form ? 1 : 0), 0) + 3 + DEF_KINDS.length + STAT_CARDS.length + GLOBAL_CARDS.length + GLOBAL_CARDS.filter((c) => c.asc).length + PACT_CARDS.length + EVOS.length + FUSION_PAIRS;
 
 export const kindsOf = (d: Defender): DefKind[] => (d.fuse ? [d.kind, d.fuse.kind] : [d.kind]);
 const owned = (g: Game) => new Set(g.defenders.flatMap(kindsOf));
@@ -242,7 +275,7 @@ export function refreshSynergies(g: Game) {
 
 /** Each upgrade makes the invasion a bit tougher: «más mejoras, más vida». */
 function threaten(g: Game) {
-  g.g.enemyHp *= 1.02;
+  g.g.enemyHp *= 1.03;
 }
 
 function newDefenderCard(g: Game, kind: DefKind): Card {
@@ -280,25 +313,32 @@ function fusionCard(a: Defender, b: Defender): Card {
   };
 }
 
+/** An outpost that has been through its joint evolution. */
+export const chipEvolved = (g: Game, k: number) => g.taken.includes(`chipevo-${CHIPS[k - 1].id}`);
+const crewOf = (g: Game, k: number) => g.defenders.filter((d) => (d.chip ?? 0) === k);
+
 /** Is the next chip ready to be unlocked? */
 export function chipReady(g: Game): boolean {
   if (g.chips >= MAX_CHIPS) return false;
+  const fast = g.g.chipFast * 4;
   if (g.chips === 1) {
     const ring = mainRing(g);
     const kinds = new Set(ring.flatMap(kindsOf)).size;
     const evolutions = ring.reduce((a, d) => a + (d.fuse ? 4 : d.evo.length), 0);
-    return kinds >= Math.min(7, g.unlocked.length) && evolutions >= Math.max(3, 6 - g.g.chipFast) && g.level >= 30 - g.g.chipFast * 4;
+    return kinds >= Math.min(7, g.unlocked.length) && evolutions >= Math.max(3, 6 - g.g.chipFast) && g.level >= 30 - fast;
   }
-  // The second main chip: only after the central core has evolved.
-  if (g.chips === TWIN) return g.g.coreEvo >= 1 && g.level >= 70 - g.g.chipFast * 4;
-  const crew = g.defenders.filter((d) => d.chip === g.chips - 1);
-  return crew.length >= 2 && g.level >= 30 + 14 * (g.chips - 1) - g.g.chipFast * 4;
+  const next = CHIPS[g.chips - 1];
+  // A new main core: only once the previous one has evolved.
+  if (next.main) return g.g.coreEvo >= next.core && g.level >= (next.core === 1 ? 70 : 140) - fast;
+  // An outpost: the chip before it needs a crew.
+  const prev = g.chips - 1;
+  return crewOf(g, prev).length >= (isMainChip(prev) ? 3 : 2) && g.level >= 30 + 11 * (g.chips - 1) - fast;
 }
 function chipCard(g: Game): Card {
   const ch = CHIPS[g.chips - 1];
-  const nth = ['Segundo', 'Tercer', 'Cuarto', 'Quinto', 'Sexto'][g.chips - 1];
+  const core = ['', 'Segundo núcleo', 'Tercer núcleo'][ch.core];
   return {
-    key: `chip-${ch.id}`, id: `chip-${ch.id}`, kind: 'chip', rarity: 'legendaria', title: g.chips === TWIN ? `Segundo núcleo: ${ch.name}` : `${nth} chip: ${ch.name}`,
+    key: `chip-${ch.id}`, id: `chip-${ch.id}`, kind: 'chip', rarity: 'legendaria', title: ch.main ? `${core}: ${ch.name}` : `Nuevo chip: ${ch.name}`,
     desc: `${ch.ability} Trae sus propios defensores, distintos a todos los demás.`, tag: `Nuevo chip · ${g.chips + 1}/${MAX_CHIPS}`, color: ch.color,
     apply: (gg) => {
       gg.chips += 1;
@@ -308,26 +348,48 @@ function chipCard(g: Game): Card {
     },
   };
 }
-/** The central core evolves: first when the four outposts are maxed, then when the second core is maxed too. */
-function coreEvoCard(g: Game): Card | null {
-  const maxed = (k: number) => levelOf(g, `chipup-${CHIPS[k - 1].id}`) >= CHIP_MAX_LVL;
-  if (g.g.coreEvo === 0 && g.chips >= 5 && [1, 2, 3, 4].every(maxed)) {
+/** An outpost at level 10 with its three defenders: they evolve together. */
+function chipEvoCard(g: Game): Card | null {
+  for (let k = 1; k < g.chips; k++) {
+    const ch = CHIPS[k - 1];
+    if (ch.main || !ch.form || chipEvolved(g, k)) continue;
+    if (levelOf(g, `chipup-${ch.id}`) < CHIP_MAX_LVL || crewOf(g, k).length < CHIP_SLOTS) continue;
+    const form = ch.form;
     return {
-      key: 'coreevo-1', id: 'coreevo-1', kind: 'coreevo', rarity: 'legendaria', title: 'Evolución del núcleo',
-      desc: 'El núcleo central evoluciona: +50 de integridad, se repara solo y todos tus defensores hacen +25 % de daño. Abre la puerta a un segundo núcleo.',
-      tag: 'Núcleo · evolución 1/2', color: '#ffd60a',
-      apply: (gg) => { gg.g.coreEvo = 1; gg.maxHp += 50; gg.hp += 50; gg.g.regen += 1; gg.g.dmgMul *= 1.25; gg.events.push('coreevo'); gg.slowmo = 1.2; },
-    };
-  }
-  if (g.g.coreEvo === 1 && g.chips > TWIN && maxed(TWIN)) {
-    return {
-      key: 'coreevo-2', id: 'coreevo-2', kind: 'coreevo', rarity: 'legendaria', title: 'Núcleo binario',
-      desc: 'Los dos núcleos se sincronizan: +100 de integridad, +40 % de daño y cadencia para todos y un escudo extra.',
-      tag: 'Núcleo · evolución 2/2', color: '#ffd60a',
-      apply: (gg) => { gg.g.coreEvo = 2; gg.maxHp += 100; gg.hp += 100; gg.g.dmgMul *= 1.4; gg.g.rateMul *= 1.4; gg.g.shieldMax += 1; gg.g.shield += 1; gg.events.push('coreevo'); gg.slowmo = 1.2; },
+      key: `chipevo-${ch.id}`, id: `chipevo-${ch.id}`, kind: 'chipevo', rarity: 'legendaria', title: form.name,
+      desc: `Evolución conjunta del chip ${ch.name}: sus tres defensores se funden en uno solo más fuerte (daño ×2, cadencia ×1,3). ${form.desc}`,
+      tag: `Chip ${ch.name} · evolución conjunta`, color: ch.color,
+      apply: (gg) => {
+        for (const d of crewOf(gg, k)) {
+          d.stats.dmg *= 2;
+          d.stats.rate *= 1.3;
+          d.stats.range *= 1.15;
+          d.lvl += 2;
+        }
+        gg.events.push('chipevo');
+        gg.slowmo = 1;
+      },
     };
   }
   return null;
+}
+const CORE_EVOS = [
+  { title: 'Evolución del núcleo', desc: 'El núcleo central evoluciona: +50 de integridad, se repara solo y todos tus defensores hacen +25 % de daño. Abre la puerta a un segundo núcleo.', apply: (g: Game) => { g.maxHp += 50; g.hp += 50; g.g.regen += 1; g.g.dmgMul *= 1.25; } },
+  { title: 'Núcleo binario', desc: 'Los dos núcleos se sincronizan: +100 de integridad, +40 % de daño y cadencia para todos y un escudo extra. Abre la puerta al tercer núcleo.', apply: (g: Game) => { g.maxHp += 100; g.hp += 100; g.g.dmgMul *= 1.4; g.g.rateMul *= 1.4; g.g.shieldMax += 1; g.g.shield += 1; } },
+  { title: 'Núcleo trinario', desc: 'Los tres núcleos laten a la vez: +150 de integridad, +60 % de daño, +2 de regeneración y dos escudos más. La forma final.', apply: (g: Game) => { g.maxHp += 150; g.hp += 150; g.g.dmgMul *= 1.6; g.g.regen += 2; g.g.shieldMax += 2; g.g.shield += 2; } },
+];
+/** A main core evolves when its four outposts have all been through their joint evolution. */
+function coreEvoCard(g: Game): Card | null {
+  const n = g.g.coreEvo;
+  if (n >= CORE_EVOS.length) return null;
+  const outs = outpostsOf(n);
+  if (outs.some((k) => k >= g.chips || !chipEvolved(g, k))) return null;
+  const e = CORE_EVOS[n];
+  return {
+    key: `coreevo-${n + 1}`, id: `coreevo-${n + 1}`, kind: 'coreevo', rarity: 'legendaria', title: e.title, desc: e.desc,
+    tag: `Núcleo · evolución ${n + 1}/${CORE_EVOS.length}`, color: '#ffd60a',
+    apply: (gg) => { gg.g.coreEvo = n + 1; e.apply(gg); gg.events.push('coreevo'); gg.slowmo = 1.2; },
+  };
 }
 
 /** Exclusive defenders still missing on the extra chips. */
@@ -384,13 +446,7 @@ function cardFor(g: Game, rnd: () => number): Card | null {
   // New defenders: guaranteed early, rarer later. Never the same type twice.
   const newW = n >= MAX_DEFENDERS || !kinds.length ? 0 : n < 3 ? 0.35 : n < 6 ? 0.18 : 0.1;
   if (r < newW) return newDefenderCard(g, kinds[Math.floor(rnd() * kinds.length)]);
-  if (r < newW + 0.1) {
-    const pool = PACT_CARDS.filter((p) => (!p.ok || p.ok(g)) && !(p.once && g.taken.includes(p.id)));
-    const p = pool[Math.floor(rnd() * pool.length)];
-    if (!p) return null;
-    return { key: p.id, id: p.id, kind: 'pact', rarity: 'epica', title: p.title, desc: p.desc, tag: 'Pacto', color: '#ff3b3b', apply: (gg) => { p.apply(gg); threaten(gg); } };
-  }
-  if (r < newW + 0.1 + 0.32) {
+  if (r < newW + 0.36) {
     // Ascensions: a structure at its top level can transform once.
     const asc = GLOBAL_CARDS.filter((c) => c.asc && c.max && levelOf(g, c.id) >= c.max && !g.g.asc.includes(c.asc.id));
     if (asc.length && rnd() < 0.5) {
@@ -463,7 +519,7 @@ export function offer(g: Game, rnd: () => number): Card[] {
   }
   const out: Card[] = [];
   const want = g.g.choices;
-  const evo = coreEvoCard(g);
+  const evo = coreEvoCard(g) ?? chipEvoCard(g);
   if (evo) out.push(evo);
   else if (chipReady(g) && rnd() < 0.6) out.push(chipCard(g));
   const pairs = fusablePairs(g);
@@ -489,8 +545,10 @@ export function choose(g: Game, c: Card, at?: number) {
   // Every pick shows up where it happened: a flash and its name.
   const d = c.kind === 'new' ? g.defenders.find((x) => x.id === g.nextId - 1) : g.defenders.find((x) => x.id === c.target);
   const gl = GLOBAL_CARDS.find((x) => x.id === c.id);
-  const [x, y] = d ? [d.x, d.y] : gl?.struct ? [0, -(c.id === 'aura' ? 70 : 104)] : [0, 0];
-  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip' || c.kind === 'chipup' || c.kind === 'coreevo';
+  const ck = c.kind === 'chipevo' || c.kind === 'chip' ? CHIPS.findIndex((x) => c.id.endsWith(`-${x.id}`)) + 1 : 0;
+  const cp = ck ? chipPos(c.kind === 'chip' ? g.chips - 1 : ck) : null;
+  const [x, y] = cp ? [cp.x, cp.y] : d ? [d.x, d.y] : gl?.struct ? [0, -(c.id === 'aura' ? 70 : 104)] : [0, 0];
+  const big = c.kind === 'evo' || c.kind === 'fusion' || c.kind === 'asc' || c.kind === 'chip' || c.kind === 'chipup' || c.kind === 'coreevo' || c.kind === 'chipevo';
   g.fx.push({ k: 'ring', x, y, r0: 6, r1: big ? 90 : 44, life: big ? 0.8 : 0.5, max: big ? 0.8 : 0.5, c: c.color, w: big ? 5 : 3 });
   g.fx.push({ k: 'flash', x, y, r: big ? 50 : 24, life: 0.3, max: 0.3, c: c.color });
   g.fx.push({ k: 'txt', x, y: y - 18, s: c.title, life: 1.4, max: 1.4, c: c.color });
